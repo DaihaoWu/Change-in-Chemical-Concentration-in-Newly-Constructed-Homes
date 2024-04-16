@@ -1,5 +1,5 @@
 # STA490-Group-5
-STA490 Group 5 project with Dr. Miriam Diamond (UofT) on Chemical Concentrations in new constructed homes. 
+STA490 project with Dr. Miriam Diamond, Professor Vianey Leos Barajas, Sara Vaezafshar and Yovna Junglee on Chemical Concentrations in new constructed homes. 
 
 ## Contacts 
 

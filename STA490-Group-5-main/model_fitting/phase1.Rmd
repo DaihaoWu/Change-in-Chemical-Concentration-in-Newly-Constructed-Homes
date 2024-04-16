@@ -57,12 +57,12 @@ PAEs<- FirstPhase[,1:15] %>%
     complete(nesting(House_ID), Period = seq(min(Period), max(Period),3), explicit = FALSE) %>%
     group_by(House_ID)
 
-tech_survey_data <- read_excel("20231027_Technician_Survey_Data.xlsx")
+tech_survey_data <- read_excel("20231027_Technician Survey Data.xlsx")
 tech_survey_data <- tech_survey_data %>% 
   select(id, base_ac_yn, hrv_on_yn)
 
 # building material 
-survey_data <- read_excel("20231027_0-12_Month_Questionnaire_Data.xlsx") %>% select(id, low_VOC_home, paints_yn)
+survey_data <- read_excel("20231027_0-12 Month Questionnaire Data.xlsx") %>% select(id, low_VOC_home, paints_yn)
 build_mat <- survey_data[1:44,] %>% 
   mutate(low_VOC_home = as.factor(low_VOC_home)) %>% 
   mutate(paints_yn = ifelse(is.na(paints_yn), 0, paints_yn))

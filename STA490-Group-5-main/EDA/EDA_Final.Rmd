@@ -16,7 +16,7 @@ library(gridExtra)
 library(kableExtra)
 # Will's EDA in Passive air - PUF sheet
 # House ID has already been changed to House_ID and Sample ID has already been changed to Sample_ID; A null values had been refilled;
-full_data = read_excel("NHS_2023_Data_October_31_UniversityofToronto_First_phase_modified_Will.xlsx", sheet = "Passive air- PUF(pgm-3)", skip = 4)
+full_data = read_excel("NHS_2023_Data_October_31_University of Toronto_First phase_modified_Will.xlsx", sheet = "Passive air- PUF(pgm-3)", skip = 4)
 ```
 
 ## Introduction
@@ -33,7 +33,7 @@ full_data = read_excel("NHS_2023_Data_October_31_UniversityofToronto_First_phase
 
 ## Data
 
-Our data set mainly consists of 3 Excel spreadsheets as follows: ”NHS_2023_Data_October_31_UniversityofToronto_First_phase.xlsx”, “20231027_Technician Survey Data.xlsx” and “20231027_0-12 Month Questionnaire Data.xlsx”.
+Our data set mainly consists of 3 Excel spreadsheets as follows: ”NHS_2023_Data_October_31_University of Toronto_First phase.xlsx”, “20231027_Technician Survey Data.xlsx” and “20231027_0-12 Month Questionnaire Data.xlsx”.
 
 ### SVOCs Concentration Data:
 
@@ -43,13 +43,13 @@ The concentration data spreadsheet contains the concentration levels of up to 69
 
 ### Technical Data:
 
-“20231027_Technician_Survey_Data.xlsx”
+“20231027_Technician Survey Data.xlsx”
 
 The technician survey data spreadsheet contains the technical details of those newly constructed homes that participated in the research recorded by the survey technicians. It contains several significant attributes such as the number of bedrooms, the number of bathrooms, the size of windows, the size of rooms, type of heating, construction material etc. There is another document (EN-Technician Survey - FINAL_coding_v2.docx) that explains the coding for the response and variables in the technical survey data. There are in total 50 homes recorded in the technical data with some missing data points at different technical variables. This spreadsheet provides data to support analysis of how the building/home itself can affect the SVOC levels.
 
 ### Questionnaire Data:
 
- “20231027_0-12_Month_Questionnaire_Data.xlsx”
+ “20231027_0-12 Month Questionnaire Data.xlsx”
 
 The questionnaire data spreadsheet contains the survey results that were completed by the survey participants. The data mainly consists of personal details in the surveyed houses, daily habits, personal behaviours, furniture details etc. There are two other documents (EN-0 month Visit Questionnaire_coding.docx/ EN-3-12 month Visit Questionnaire_coding.docx) that explain the coding for the response and variables in the questionnaire survey data. There are in total 44 homes recorded in the data spreadsheet with some missing data points at different survey variables. This spreadsheet provides data to support analysis on how human activity can affect the SVOC levels.
 
@@ -196,9 +196,9 @@ In our exploratory data analysis, we attempt to search for trends by combining d
 We would like to start with checking if human activity increases PAE levels in general. We will be performing analysis on the active sampler data since it contains PAE levels before and after owners move in. We can plot a bar plot of the difference in PAE levels for pre and post move in to see how tenants moving into new houses affect the PAE levels.
 
 ```{r, echo=FALSE, warning=FALSE}
-survey_data <- read_excel("20231027_0-12_Month_Questionnaire_Data.xlsx") %>% select(id, low_VOC_home, paints_yn,dogcat_yn)
+survey_data <- read_excel("20231027_0-12 Month Questionnaire Data.xlsx") %>% select(id, low_VOC_home, paints_yn,dogcat_yn)
 selected_survey_data <- survey_data[1:44,]
-Active_GFF <- read_excel("NHS_2023_Data_October_31_UniversityofToronto_First_phase.xlsx", 
+Active_GFF <- read_excel("NHS_2023_Data_October_31_University of Toronto_First phase.xlsx", 
                          sheet = "Active air GFF (pgm-3)",
                          range = "A2:Q30")
 full_data_active = merge(Active_GFF, selected_survey_data, by.x = 'House ID', by.y='id')
@@ -321,8 +321,8 @@ We combine the technician survey data with our passive sampler data set to see i
 
 ```{r, echo = FALSE}
 #Fred's EDA
-concentration_data = read_excel("NHS_2023_Data_October_31_UniversityofToronto_First_phase_modified_Will.xlsx", sheet = "Passive air- PUF(pgm-3)", skip = 4)
-tech_survey_data = read_excel("20231027_Technician_Survey_Data.xlsx")
+concentration_data = read_excel("NHS_2023_Data_October_31_University of Toronto_First phase_modified_Will.xlsx", sheet = "Passive air- PUF(pgm-3)", skip = 4)
+tech_survey_data = read_excel("20231027_Technician Survey Data.xlsx")
 #head(concentration_data)
 #head(tech_survey_data)
 tech_survey_data <- tech_survey_data %>% select(id, base_ac_yn, heating_type, cellulose_ins_yn, Styrofoam_ins_yn, fiberglass_ins_yn, sprayfoam_ins_yn, base_ij_osb_yn, ukc1_mat, lkc_mat, hrv_on_yn)
@@ -431,7 +431,7 @@ As shown in the above graph, it seems that there is no difference in trend betwe
 
 ```{r, echo = FALSE, include = FALSE}
 # ## Read data in first phase only for the first group
-# FirstPhase <- read_excel("NHS_2023_Data_October_31_UniversityofToronto_First_phase.xlsx", 
+# FirstPhase <- read_excel("NHS_2023_Data_October_31_University of Toronto_First phase.xlsx", 
 #                          sheet = "Passive air- PUF(pgm-3)",
 #                          range = "A5:O38")
 # FirstPhase <- FirstPhase %>% 
@@ -500,7 +500,7 @@ We would like to see how materials used during or after building the homes affec
 
 We choose to see how paint and low volatile organic compound building materials affect chemical levels.
 ```{r, echo=FALSE}
-FirstPhase <- read_excel("NHS_2023_Data_October_31_UniversityofToronto_First_phase.xlsx", 
+FirstPhase <- read_excel("NHS_2023_Data_October_31_University of Toronto_First phase.xlsx", 
                          sheet = "Passive air- PUF(pgm-3)",
                          range = "A5:O38")
 FirstPhase <- FirstPhase %>% 
@@ -512,7 +512,7 @@ FirstPhase <- FirstPhase %>%
     TRUE ~ 9
   ))
 
-survey_data <- read_excel("20231027_0-12_Month_Questionnaire_Data.xlsx") %>% select(id, low_VOC_home, paints_yn)
+survey_data <- read_excel("20231027_0-12 Month Questionnaire Data.xlsx") %>% select(id, low_VOC_home, paints_yn)
 selected_survey_data <- survey_data[1:44,]
 
 full_data = merge(FirstPhase, selected_survey_data, by.x = 'house_id', by.y='id')

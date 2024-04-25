@@ -129,6 +129,7 @@ for (m in missing_sim_data) {
 ```
 
 ```{r}
+# Fit the LMM on the imputed data-set and check if the true beta1 align with the model estimate.
 library(reshape2)
 slope_ci_lst = list()
 b1_lst = list()
@@ -149,6 +150,7 @@ for (m in imp_sim_data_1) {
 ```
 
 ```{r}
+# Export the first simulation data
 library(writexl)
 
 # Export the list to an Excel file
@@ -286,6 +288,7 @@ for (m in missing_sim_data) {
 ```
 
 ```{r}
+# Fit LMM on this imputed data-set again
 library(reshape2)
 slope_ci_lst = list()
 b1_lst = list()

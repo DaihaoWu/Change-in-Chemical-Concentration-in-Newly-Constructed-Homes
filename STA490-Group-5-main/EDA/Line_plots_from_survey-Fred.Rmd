@@ -28,6 +28,7 @@ tech_survey_data <- tech_survey_data %>% select(id, base_ac_yn, heating_type, ce
 ```
 
 ```{r}
+# Merge the concentration data and the survey data
 full_data = merge(concentration_data, tech_survey_data, by.x = 'House_ID', by.y='id')
 full_data
 ```
@@ -44,7 +45,7 @@ full_data = full_data %>% mutate(Period = case_when(Period == "0 month" ~ 0, Per
 
 full_data
 
-
+# Plots:
 # ggplot(full_data, aes(x = Period, y = DEP, color = as.factor(House_ID), group = as.factor(House_ID))) +
 #   geom_line() +
 #   labs(x = "Month", y = "Concentration", color = "House ID") +
@@ -55,7 +56,7 @@ Only houses with id 1 to 3 has a complete data for month from month 0 to 9, whil
 
 
 ```{r}
-
+# Only include houses with complete data for now
 data_complete_month = full_data %>% filter(House_ID == "NHAQS-001" | House_ID == "NHAQS-002" | House_ID == "NHAQS-003" | House_ID == "NHAQS-006" | House_ID == "NHAQS-008")
 
 ## Plot the graph of the houses with complete data

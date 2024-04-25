@@ -26,6 +26,7 @@ library(lmerTest)
 ```
 
 ```{r, echo = FALSE}
+# Prepare data
 concentration_data = read_excel("NHS_2023_Data_October_31_University of Toronto_First phase_modified_Will.xlsx", sheet = "Passive air- PUF(pgm-3)", skip = 4)
 selected_concentration_data <- concentration_data[1:33, c(1:15, 18,19,20,23,26)]
 
@@ -47,7 +48,6 @@ full_data <- full_data[c(1:33), ]
 # Change the period from text to numerical data
 full_data = full_data %>% mutate(Period = case_when(Period == "0 month" ~ 0, Period == "3 month" ~ 3, Period == "6 month" ~ 6, Period == "9 month" ~ 9))
 
-#head(full_data)
 
 #Convert all number strings to numeric
 full_data$DEP <- as.numeric(full_data$DEP)
@@ -72,6 +72,8 @@ full_data
 
 
 ```{r}
+# Prepare the data loader which takes the original data frame, chemical name, and houseID as inputs;
+# Output a vector of chemical concentrations for the given chemical and house.
 data_loader <- function(chemical_name, house_id, data_df) {
   # Filter data for the specified house_id and chemical_name
   filtered_data <- data_df[data_df$House_ID == house_id, ]
@@ -92,6 +94,7 @@ data_loader <- function(chemical_name, house_id, data_df) {
 ```
 
 ```{r}
+# Copy-mean imputation method that takes an incomplete data and output the imputed data.
 copymean_imputation <- function(yn){
   first_NA_i <- which(is.na(yn))[1]
   if (is.na(first_NA_i)){
@@ -107,6 +110,7 @@ copymean_imputation <- function(yn){
 ```
 
 ```{r, echo = FALSE}
+# Interpolation imputation method that takes an incomplete data and output the imputed data.
 # xn: time period corresponding to 0 month to 9 month, yn: the corresponding chemical concentration
 MAX_DL = 231
 interpolation <- function(yn) {
@@ -134,6 +138,7 @@ interpolation <- function(yn) {
 
 
 ```{r, echo = FALSE}
+# Reformat the data
 # xn: time period corresponding to 0 month to 9 month, yn: the corresponding chemical concentration
 create_data <- function(chemical, House_ID, dataframe, func=interpolation) {
   yn <- data_loader(chemical, House_ID, dataframe)
@@ -148,10 +153,12 @@ create_data <- function(chemical, House_ID, dataframe, func=interpolation) {
 ```
 
 ```{r}
+# Example of create_data function
 create_data('DiBP', 'NHAQS-009', dataframe = full_data)
 ```
 
 ```{r}
+# Create a new dataframe that includes imputed data for different chemicals
 imp_data <- data.frame()
 chem_lst = c('DEP', 'DPP', 'DiBP', 'DnBP', 'BzBP', 'DEHP', 'DnOP', 'DiNP')
 for (chemical in unique(chem_lst)) {

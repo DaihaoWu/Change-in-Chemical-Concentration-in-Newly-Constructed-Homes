@@ -22,6 +22,7 @@ library(lmerTest)
 ```
 
 ```{r, echo = FALSE}
+# Prepare data
 concentration_data = read_excel("NHS_2023_Data_October_31_University of Toronto_First phase_modified_Will.xlsx", sheet = "Passive air- PUF(pgm-3)", skip = 4)
 selected_concentration_data <- concentration_data[1:33, c(1:15, 18,19,20,23,26)]
 
@@ -123,6 +124,7 @@ summary(mod1_DnOP)
 ```
 
 ```{r}
+# The model for DnOP reports significant beta1, so we check the plot here.
 full_data %>% 
   ggplot(aes(x = Period, y = log(DnOP), group = House_ID)) +
   geom_line(aes(color = House_ID)) +

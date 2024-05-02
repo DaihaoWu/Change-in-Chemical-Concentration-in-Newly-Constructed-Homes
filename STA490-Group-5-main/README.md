@@ -41,5 +41,5 @@ Tianli Xu (tianli.xu@mail.utoronto.ca)
 ## Reports 
 * PDF version of EDA report can be found [here](EDA/EDA_Final.pdf) and Rmarkdown can be found [here](EDA/EDA_Final.Rmd)
 * PDF version of the report [Final Reports](chem_conc_sta490_project.pdf)
-* [Final Presentation Slide](STA490_Collaborator_Final_Update.pdf)
+* [Final Presentation Slide](Final Presentation Slides.pdf)
 

@@ -1,0 +1,174 @@
+
+
+```{r}
+survey_data <- read_excel("20231027_0-12 Month Questionnaire Data.xlsx")
+
+# Function to delete last three to fourth character of a date string
+delete_characters <- function(date_string) {
+  substr(date_string, 1, nchar(date_string) - 4) %>% 
+    paste0(substr(date_string, nchar(date_string) - 1, nchar(date_string)))
+}
+
+survey_data$date = sapply(survey_data$date, delete_characters) 
+
+survey_data$date <- as.Date(survey_data$date, "%m/%d/%y")
+
+# Order by House ID and then by Start date
+survey_data <- survey_data %>%
+  arrange(id, date)
+
+```
+
+
+
+```{r}
+### READ IN CONCENTRATION DATA, please look for !!!, you might need to change code at !!!section
+
+full_data = read_excel("New Home Study- SVOCs_University of Toronto_March2024.xlsx", sheet = "Passive Air - PDMS (pg.m-3)", skip = 4)
+
+
+
+
+full_data <- full_data[c(1:140), c(1:5, 47:51, 53:55)] #Filter and select to houses with only the Salicylates and Benzophenones.  !!!PLEASE change the slicing of 47:51, 53:55 to your variables of interest!
+
+
+
+
+# Get the column names of chemical data
+chemical_columns <- colnames(full_data)[sapply(full_data, is.character) & colnames(full_data) != "House ID" & colnames(full_data) != "Sample ID" & colnames(full_data) != "Period (month)" & colnames(full_data) != "Start date \n(yyyy-mm-dd)" & colnames(full_data) != "Stop date (yyyy-mm-dd)"]
+
+# Select columns with "<DL" frequency below 50%
+calculate_dl_frequency <- function(column) {
+  return(sum(column == "<DL") / length(column))
+}
+
+selected_columns <- chemical_columns[sapply(full_data[chemical_columns], calculate_dl_frequency) < 0.5]
+
+# Subset the data to include only selected columns
+selected_data <- full_data[, c("House ID", "Sample ID", "Period (month)","Start date \n(yyyy-mm-dd)", "Stop date (yyyy-mm-dd)", selected_columns)]
+
+selected_data$`Period (month)` <- as.numeric(selected_data$`Period (month)`)
+selected_data$`Period (month)`[is.na(selected_data$`Period (month)`)] <- 999
+selected_data$`Period (month)`[!selected_data$`Period (month)` %in% c(0, 3, 6, 9, 12, 999)] <- 999 #Change Blank or other usual input of period value to 999
+
+selected_data <- selected_data %>%
+  arrange(`House ID`, `Period (month)`)
+
+#Changed the column names for plotting.   !!!!YOU can change it to your chemicals, or just dont change it if you don't want to change it.
+colnames(selected_data)[colnames(selected_data) == "Hexyl salicylate"] <- "Hexyl_salicylate"
+
+colnames(selected_data)[colnames(selected_data) == "Benzyl salicylate"] <- "Benzyl_salicylate"
+
+colnames(selected_data)[colnames(selected_data) == "2-ethylhexyl salicylate"] <- "Ethylhexyl_salicylate"
+
+colnames(selected_data)[colnames(selected_data) == "
+BP"] <- "BPs"
+
+colnames(selected_data)[colnames(selected_data) == "BP-3"] <- "BP_3"
+
+colnames(selected_data)[colnames(selected_data) == "BP-8"] <- "BP_8"
+
+
+
+
+###!!!!!! NEED TO INCLUDE NEXT TWO LINES IN YOUR CODE !!!!!
+colnames(selected_data)[colnames(selected_data) == "House ID"] <- "House_ID"
+colnames(selected_data)[colnames(selected_data) == "Period (month)"] <- "Period"
+
+
+# !!!!!! CHANGE below it to your chemicals!!!!!
+selected_data$Hexyl_salicylate = as.numeric(selected_data$Hexyl_salicylate)
+selected_data$Benzyl_salicylate = as.numeric(selected_data$Benzyl_salicylate)
+selected_data$Ethylhexyl_salicylate = as.numeric(selected_data$Ethylhexyl_salicylate)
+selected_data$BPs = as.numeric(selected_data$BPs)
+selected_data$BP_3 = as.numeric(selected_data$BP_3)
+selected_data$BP_8 = as.numeric(selected_data$BP_8)
+
+
+```
+
+
+
+
+```{r}
+
+selected_data <- selected_data %>%
+  rename(id = House_ID)
+
+# Change the date for the selected data to date
+selected_data$`Start date 
+(yyyy-mm-dd)` <- as.Date(selected_data$`Start date 
+(yyyy-mm-dd)`, origin = "1900-01-01")
+
+selected_data <- selected_data %>%
+  rename(start_date = `Start date 
+(yyyy-mm-dd)`)
+
+
+# Create a new column 'period' initialized with NA
+survey_data$period <- NA
+
+# Loop through each row of survey_data
+for (i in 1:nrow(survey_data)) {
+  # Extract current row's id and date
+  current_id <- survey_data$id[i]
+  current_date <- survey_data$date[i]
+  
+  # Filter selected_data to find matching rows
+  matching_rows <- selected_data %>%
+    filter(id == current_id & abs(difftime(start_date, current_date, units = "days")) <= 30)
+  
+  # If there are matching rows, take the first period_value
+  if (nrow(matching_rows) > 0) {
+    survey_data$period[i] <- matching_rows$Period[1]
+  }
+}
+```
+
+
+```{r}
+# Merge the dataset using left join
+Survey_Selected_Merged = left_join(selected_data, survey_data, by = c('id', 'Period' = 'period'))
+
+# Merge with tech data to get the full data
+tech_survey_data = read_excel("20231027_Technician Survey Data.xlsx")
+full_data_Matched_Period = left_join(Survey_Selected_Merged, tech_survey_data, by = 'id')
+```
+
+
+```{r}
+# Combine all type of furniture as new furniture as a group
+
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(new_furniture_yn = case_when(n_kmat_new > 0 | n_mat_cover_new > 0 | n_tmat_new > 0 | n_uph_chair_new > 0 | n_uph_sofa_new > 0 | n_uph_ottoman_new > 0 | n_uph_kids_new > 0 | n_uph_other_new > 0 | n_comp_dining_new > 0 | n_comp_bed_new > 0 | n_comp_dresser_new > 0 | n_comp_desk_new > 0 | n_comp_accent_new > 0 | n_comp_other_new > 0 ~ 1, is.na(n_kmat_new) & is.na(n_mat_cover_new) & is.na(n_tmat_new) & is.na(n_uph_chair_new) & is.na(n_uph_sofa_new) & is.na(n_uph_ottoman_new) & is.na(n_uph_kids_new) & is.na(n_uph_other_new) & is.na(n_comp_dining_new) & is.na(n_comp_bed_new) & is.na(n_comp_dresser_new) & is.na(n_comp_desk_new) & is.na(n_comp_accent_new) & is.na(n_comp_other_new) ~ NA, .default = 0))
+
+```
+
+```{r}
+# Number of days where any cleaning product was used, number of days where a personal care product was used, and number of dusting days are also items to look into. Sara also recommended looking at number of rooms painted, any time a renovation occurred, and anything to do with the HVAC filter
+
+```
+
+
+
+```{r}
+selected_data_BP_detected = full_data_Matched_Period %>% filter(Period %in% c(0, 3, 6, 9, 12) & BPs != "<DL")
+selected_data_BP_detected_complete = selected_data_BP_detected %>% group_by(id) %>%
+  filter(n() >= 2) %>%
+  ungroup()
+
+dep_plot2 = ggplot(selected_data_BP_detected_complete, aes(x = Period, y = BPs, color = as.factor(new_furniture_yn), group = as.factor(id))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("BPs versus Month for Different Homes with corresponding purchase of new furniture")
+dep_plot2
+```
+
+```{r}
+selected_data_ES_detected = full_data_Matched_Period %>% filter(Period %in% c(0, 3, 6, 9, 12) & Ethylhexyl_salicylate != "<DL") %>% group_by(id)
+
+dep_plot2 = ggplot(selected_data_ES_detected, aes(x = Period, y = Ethylhexyl_salicylate, color = as.factor(new_furniture_yn), group = as.factor(id))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("Ethylhexyl_salicylate versus Month for Different Homes with corresponding purchase of new furniture")
+dep_plot2
+```

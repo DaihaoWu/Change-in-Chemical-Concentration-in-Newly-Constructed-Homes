@@ -1,0 +1,854 @@
+---
+title: "EDA for Salicylates and Benzophenones"
+author: "Daihao(Will) Wu"
+date: "2024-07-08"
+output: pdf_document
+---
+
+```{r, include = F, echo = FALSE, message = FALSE}
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(readxl)
+library(janitor)
+library(ggplot2)
+library(gridExtra)
+library(writexl)
+
+full_data = read_excel("New Home Study- SVOCs_University of Toronto_March2024.xlsx", sheet = "Passive Air - PDMS (pg.m-3)", skip = 4)
+
+full_data <- full_data[c(1:140), c(1:5, 47:51, 53:55)] #Filter and select to houses with only the Salicylates and Benzophenones
+
+```
+
+
+```{r, include = F, echo = FALSE}
+calculate_dl_frequency <- function(column) {
+  return(sum(column == "<DL") / length(column))
+}
+
+# Get the column names of chemical data
+chemical_columns <- colnames(full_data)[sapply(full_data, is.character) & colnames(full_data) != "House ID" & colnames(full_data) != "Sample ID" & colnames(full_data) != "Period (month)" & colnames(full_data) != "Start date \n(yyyy-mm-dd)" & colnames(full_data) != "Stop date (yyyy-mm-dd)"]
+
+# Select columns with "<DL" frequency below 50%
+selected_columns <- chemical_columns[sapply(full_data[chemical_columns], calculate_dl_frequency) < 0.5]
+
+# Subset the data to include only selected columns
+selected_data <- full_data[, c("House ID", "Sample ID", "Period (month)","Start date \n(yyyy-mm-dd)", "Stop date (yyyy-mm-dd)", selected_columns)]
+```
+
+```{r, echo = FALSE}
+print(selected_columns)
+```
+Above 6 chemicals have detection frequency above 50%.
+
+Three of them are from Salicylates family. All three chemicals from BP family have detection frequency above 50%.
+
+```{r, include = F, echo = FALSE}
+selected_data$`Period (month)` <- as.numeric(selected_data$`Period (month)`)
+selected_data$`Period (month)`[is.na(selected_data$`Period (month)`)] <- 999
+selected_data$`Period (month)`[!selected_data$`Period (month)` %in% c(0, 3, 6, 9, 12, 999)] <- 999 #Change Blank or other usual input of period value to 999
+
+selected_data <- selected_data %>%
+  arrange(`House ID`, `Period (month)`)
+
+#Following selects out house with "full periods" recorded
+required_periods <- c(0, 3, 6, 9, 12)
+house_ids_with_all_periods <- selected_data %>%
+  group_by(`House ID`) %>%
+  filter(all(required_periods %in% `Period (month)`)) %>%
+  distinct(`House ID`) %>%
+  pull(`House ID`)
+
+# Print out the House IDs that satisfy the requirement
+print("The following are the houses with 0 to 12 months period recorded: ")
+print(house_ids_with_all_periods)
+
+# Calculate the total number of houses
+total_houses <- n_distinct(selected_data$`House ID`)
+
+# Calculate the number of houses that have 1, 2, 3, 4, and 5 periods recorded
+period_counts <- selected_data %>%
+  group_by(`House ID`) %>%
+  summarise(period_count = n_distinct(`Period (month)`))
+
+houses_with_periods <- period_counts %>%
+  group_by(period_count) %>%
+  summarise(number_of_houses = n())
+
+# Print the results
+print(paste("Total number of houses:", total_houses))
+print(houses_with_periods)
+```
+
+```{r, include = F, echo = FALSE}
+#Changed the column names for plotting
+colnames(selected_data)[colnames(selected_data) == "Hexyl salicylate"] <- "Hexyl_salicylate"
+
+colnames(selected_data)[colnames(selected_data) == "Benzyl salicylate"] <- "Benzyl_salicylate"
+
+colnames(selected_data)[colnames(selected_data) == "2-ethylhexyl salicylate"] <- "Ethylhexyl_salicylate"
+
+colnames(selected_data)[colnames(selected_data) == "
+BP"] <- "BPs"
+
+colnames(selected_data)[colnames(selected_data) == "BP-3"] <- "BP_3"
+
+colnames(selected_data)[colnames(selected_data) == "BP-8"] <- "BP_8"
+
+colnames(selected_data)[colnames(selected_data) == "House ID"] <- "House_ID"
+colnames(selected_data)[colnames(selected_data) == "Period (month)"] <- "Period"
+
+selected_data$Hexyl_salicylate = as.numeric(selected_data$Hexyl_salicylate)
+selected_data$Benzyl_salicylate = as.numeric(selected_data$Benzyl_salicylate)
+selected_data$Ethylhexyl_salicylate = as.numeric(selected_data$Ethylhexyl_salicylate)
+selected_data$BPs = as.numeric(selected_data$BPs)
+selected_data$BP_3 = as.numeric(selected_data$BP_3)
+selected_data$BP_8 = as.numeric(selected_data$BP_8)
+```
+
+There are in total 44 houses in our dataset
+The following are the houses with 0 to 12 months period recorded: 
+
+"NHAQS-028" "NHAQS-029" "NHAQS-030" "NHAQS-031" "NHAQS-032" "NHAQS-034" "NHAQS-036"
+
+
+There are 8 houses have 1 period recorded.
+
+10 houses have 2 periods recorded.
+
+7 houses have 3 periods recorded.
+
+12 houses have 4 periods recorded.
+
+5 houses have 5 periods (0, 3, 6, 9, 12) recorded.
+
+2 houses have 6 periods (0, 3, 6, 9, 12, other unusual period value e.g. Blank) recorded.
+
+
+Note that House "NHAQS-38" has two rows of data recorded for the same period ('0') with the same Sample_ID. This might be a data collection/recording error.
+
+
+```{r, include = F, echo = F}
+tech_survey_data = read_excel("20231027_Technician Survey Data.xlsx")
+tech_survey_data <- tech_survey_data %>% 
+  select(id, base_ac_yn, hrv_on_yn)
+survey_data <- read_excel("20231027_0-12 Month Questionnaire Data.xlsx") %>% select(id, low_VOC_home, paints_yn,dogcat_yn)
+selected_survey_data <- survey_data[1:44,]
+
+merged_data = merge(selected_data, tech_survey_data, by.x = 'House_ID', by.y='id')
+full_data1 = merge(merged_data, selected_survey_data, by.x = 'House_ID', by.y='id')
+selected_data <- full_data1 %>% 
+  mutate(low_VOC_home = ifelse(is.na(low_VOC_home), 0, low_VOC_home)) %>% mutate(paints_yn = ifelse(is.na(paints_yn), 0, paints_yn))
+```
+
+
+```{r, include = F, echo = FALSE}
+#For Hexyl Salicylate
+selected_data_HS_detected = selected_data %>% filter(Period %in% c(0, 3, 6, 9, 12) & Hexyl_salicylate != "<DL")
+
+selected_data_HS_detected$Hexyl_salicylate = as.numeric(selected_data_HS_detected$Hexyl_salicylate)
+
+
+hs_plot = ggplot(selected_data_HS_detected, aes(x = Period, y = Hexyl_salicylate, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("Hexyl Salicylate versus Month for Different Homes")
+
+hs_plot
+
+
+
+homes_with_4_or_more_periods <- selected_data_HS_detected %>%
+  group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+# Plot for "Hexyl_salicylate" across periods for homes with 4 or more periods present
+hs_4_plot <- ggplot(homes_with_4_or_more_periods, aes(x = Period, y = Hexyl_salicylate, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("Hexyl Salicylate versus Month for Homes with 4 or More Periods Present") +
+  theme_minimal()
+
+# Display the plot
+hs_4_plot
+
+```
+
+```{r, include = F, echo = FALSE}
+#For Benzyl_salicylate
+selected_data_BS_detected = selected_data %>% filter(Period %in% c(0, 3, 6, 9, 12) & Benzyl_salicylate != "<DL")
+
+selected_data_BS_detected$Benzyl_salicylate = as.numeric(selected_data_BS_detected$Benzyl_salicylate)
+
+
+bs_plot = ggplot(selected_data_BS_detected, aes(x = Period, y = Benzyl_salicylate, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("Benzyl_salicylate versus Month for Different Homes")
+
+bs_plot
+
+
+homes_with_5_or_more_periods <- selected_data_BS_detected %>%
+  group_by(House_ID) %>%
+  filter(n() >= 5) %>%
+  ungroup()
+
+homes_with_5_or_more_periods = homes_with_5_or_more_periods %>% filter(House_ID != "NHAQS-038")
+
+# Plot for "Benzyl_salicylate" across periods for homes with 4 or more periods present
+bs_5_plot <- ggplot(homes_with_5_or_more_periods, aes(x = Period, y = Benzyl_salicylate, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("Benzyl salicylate versus Month for Homes with All Periods") +
+  theme_minimal()
+
+# Display the plot
+bs_5_plot
+
+#Note that house NHAQS-038 is removed because it is an outlier 
+```
+
+```{r, include = F, echo = FALSE}
+#For Ethylhexyl_salicylate
+selected_data_ES_detected = selected_data %>% filter(Period %in% c(0, 3, 6, 9, 12) & Ethylhexyl_salicylate != "<DL")
+
+selected_data_ES_detected$Ethylhexyl_salicylate = as.numeric(selected_data_ES_detected$Ethylhexyl_salicylate)
+
+
+es_plot = ggplot(selected_data_ES_detected, aes(x = Period, y = Ethylhexyl_salicylate, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("Ethylhexyl salicylate versus Month for Different Homes")
+
+es_plot
+
+
+homes_with_4_or_more_periods <- selected_data_ES_detected %>%
+  group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+homes_with_4_or_more_periods = homes_with_4_or_more_periods
+
+# Plot for "Ethylhexyl_salicylate" across periods for homes with 4 or more periods present
+es_4_plot <- ggplot(homes_with_4_or_more_periods, aes(x = Period, y = Ethylhexyl_salicylate, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("Ethylhexyl salicylate versus Month for Homes with 4 or more Periods Present") +
+  theme_minimal()
+
+# Display the plot
+es_4_plot
+
+```
+
+```{r, include = F, echo = FALSE}
+#For BP
+selected_data_BP_detected = selected_data %>% filter(Period %in% c(0, 3, 6, 9, 12) & BPs != "<DL")
+
+selected_data_BP_detected$BPs = as.numeric(selected_data_BP_detected$BPs)
+
+
+bp_plot = ggplot(selected_data_BP_detected, aes(x = Period, y = BPs, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("BP versus Month for Different Homes")
+
+bp_plot
+
+
+homes_with_4_or_more_periods <- selected_data_BP_detected %>%
+  group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+homes_with_4_or_more_periods = homes_with_4_or_more_periods
+
+# Plot for "BP" across periods for homes with 4 or more periods present
+bp_4_plot <- ggplot(homes_with_4_or_more_periods, aes(x = Period, y = BPs, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("BP versus Month for Homes with All Periods") +
+  theme_minimal()
+
+# Display the plot
+bp_4_plot
+
+```
+
+
+```{r, include = F, echo = FALSE}
+#For BP
+selected_data_BP_3_detected = selected_data %>% filter(Period %in% c(0, 3, 6, 9, 12) & BP_3 != "<DL")
+
+selected_data_BP_3_detected$BP_3 = as.numeric(selected_data_BP_3_detected$BP_3)
+
+
+bp_3_plot = ggplot(selected_data_BP_3_detected, aes(x = Period, y = BP_3, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("BP_3 versus Month for Different Homes")
+
+bp_3_plot
+
+
+homes_with_4_or_more_periods <- selected_data_BP_3_detected %>%
+  group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+homes_with_4_or_more_periods = homes_with_4_or_more_periods
+
+# Plot for "BP" across periods for homes with 4 or more periods present
+bp_3_4_plot <- ggplot(homes_with_4_or_more_periods, aes(x = Period, y = BP_3, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("BP_3 versus Month for Homes with 4 Periods or more present") +
+  theme_minimal()
+
+# Display the plot
+bp_3_4_plot
+
+```
+
+
+```{r, include = F, echo = FALSE}
+#For BP
+selected_data_BP_8_detected = selected_data %>% filter(Period %in% c(0, 3, 6, 9, 12) & BP_8 != "<DL")
+
+selected_data_BP_8_detected$BP_8 = as.numeric(selected_data_BP_8_detected$BP_8)
+
+
+bp_8_plot = ggplot(selected_data_BP_8_detected, aes(x = Period, y = BP_8, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("BP_8 versus Month for Different Homes")
+
+bp_8_plot
+
+
+homes_with_4_or_more_periods <- selected_data_BP_8_detected %>%
+  group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+homes_with_4_or_more_periods = homes_with_4_or_more_periods
+
+# Plot for "BP" across periods for homes with 4 or more periods present
+bp_8_4_plot <- ggplot(homes_with_4_or_more_periods, aes(x = Period, y = BP_8, color = as.factor(House_ID), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "House ID") +
+  ggtitle("BP_8 versus Month for Homes with 4 Periods or more present") +
+  theme_minimal()
+
+# Display the plot
+bp_8_4_plot
+
+```
+
+```{r, echo=F}
+grid.arrange(hs_4_plot,bs_5_plot,es_4_plot, nrow = 3, ncol = 1)
+grid.arrange(bp_4_plot,bp_3_4_plot,bp_8_4_plot, nrow = 3, ncol = 1)
+
+```
+
+
+
+
+
+From the above line plots, we can notice that:
+
+
+(1) Increasing trend for Hexyl salicylate after the period of 3 for most houses
+
+(2) The concentration level for BP fluctuate by a lot across periods
+
+(3) There are many outliers for EthylHexyl salicylate (some go up to 5 times of the average concentration level)
+
+(4) For BP_3, if we look at the houses with 4 or more periods present, there seems to have a slight increase trend over time. However, mostly on the last recorded period.
+
+(5) For BP_8, there seems to have a slight decrease trend over time for most houses
+
+
+
+
+Jul 13, 2024
+
+Look at factors that may affect levels of concentrations and do the line plots (as in the report)
+
+Cross-correlation between the chemicals.
+
+
+
+
+```{r, include = F, echo = F}
+selected_data_BP_8_detected_complete = selected_data_BP_8_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+BP_8_ac_hrv = ggplot(selected_data_BP_8_detected_complete, aes(x = Period, y = BP_8, linetype=as.factor(hrv_on_yn), color = as.factor(base_ac_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Heat Recovery Ventilator", color = "Air Conditioning") +
+  ggtitle("BP_8 versus Month for Different Homes with corresponding usage of air conditioning and heat recovery type")
+BP_8_ac_hrv
+```
+
+```{r, include = F, echo = F}
+selected_data_BP_3_detected_complete = selected_data_BP_3_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+BP_3_ac_hrv = ggplot(selected_data_BP_3_detected_complete, aes(x = Period, y = BP_3, linetype=as.factor(hrv_on_yn), color = as.factor(base_ac_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Heat Recovery Ventilator", color = "Air Conditioning") +
+  ggtitle("BP_3 versus Month for Different Homes with corresponding usage of air conditioning and heat recovery type")
+BP_3_ac_hrv
+```
+
+
+
+
+```{r, include = F, echo = F}
+selected_data_BP_detected_complete = selected_data_BP_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+BP_ac_hrv = ggplot(selected_data_BP_detected_complete, aes(x = Period, y = BPs, linetype=as.factor(hrv_on_yn), color = as.factor(base_ac_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Heat Recovery Ventilator", color = "Air Conditioning") +
+  ggtitle("BP versus Month for Different Homes with corresponding usage of air conditioning and heat recovery type")
+BP_ac_hrv
+```
+
+
+
+```{r, include = F, echo = F}
+selected_data_ES_detected_complete = selected_data_ES_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+ES_ac_hrv = ggplot(selected_data_ES_detected_complete, aes(x = Period, y = Ethylhexyl_salicylate, linetype=as.factor(hrv_on_yn), color = as.factor(base_ac_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Heat Recovery Ventilator", color = "Air Conditioning") +
+  ggtitle("Ethylhexyl_salicylate versus Month for Different Homes with corresponding usage of air conditioning and heat recovery type")
+ES_ac_hrv
+```
+
+
+
+```{r, include = F, echo = F}
+selected_data_BS_detected_complete = selected_data_BS_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+BS_ac_hrv = ggplot(selected_data_BS_detected_complete, aes(x = Period, y = Benzyl_salicylate, linetype=as.factor(hrv_on_yn), color = as.factor(base_ac_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Heat Recovery Ventilator", color = "Air Conditioning") +
+  ggtitle("Benzyl_salicylate versus Month for Different Homes with corresponding usage of air conditioning and heat recovery type")
+BS_ac_hrv
+```
+
+
+```{r, include = F, echo = F}
+selected_data_HS_detected_complete = selected_data_HS_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+HS_ac_hrv = ggplot(selected_data_HS_detected_complete, aes(x = Period, y = Hexyl_salicylate, linetype=as.factor(hrv_on_yn), color = as.factor(base_ac_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Heat Recovery Ventilator", color = "Air Conditioning") +
+  ggtitle("Hexyl_salicylate versus Month for Different Homes with corresponding usage of air conditioning and heat recovery type")
+HS_ac_hrv
+```
+
+
+```{r, echo=F}
+grid.arrange(HS_ac_hrv,ES_ac_hrv, nrow = 2, ncol = 1)
+```
+
+
+```{r, echo = F}
+grid.arrange(BS_ac_hrv, BP_ac_hrv, nrow = 2, ncol = 1)
+```
+
+```{r, echo = F}
+grid.arrange(BP_3_ac_hrv, BP_8_ac_hrv, nrow = 2, ncol = 1)
+```
+
+
+
+
+```{r, echo = F}
+selected_data_BP_8_detected_complete = selected_data_BP_8_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+dep_plot2 = ggplot(selected_data_BP_8_detected_complete, aes(x = Period, y = BP_8, linetype=as.factor(paints_yn), color = as.factor(low_VOC_home), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Usage of Paints", color = "Usage of Low VOC Material") +
+  ggtitle("BP_8 versus Month for Different Homes with corresponding usage of paint and building material")
+dep_plot2
+```
+
+```{r, echo = F}
+selected_data_BP_3_detected_complete = selected_data_BP_3_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+dep_plot2 = ggplot(selected_data_BP_3_detected_complete, aes(x = Period, y = BP_3, linetype=as.factor(paints_yn), color = as.factor(low_VOC_home), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Usage of Paints", color = "Usage of Low VOC Material") +
+  ggtitle("BP_3 versus Month for Different Homes with corresponding usage of paint and building material")
+dep_plot2
+```
+
+
+
+
+```{r, echo = F}
+selected_data_BP_detected_complete = selected_data_BP_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+dep_plot2 = ggplot(selected_data_BP_detected_complete, aes(x = Period, y = BPs, linetype=as.factor(paints_yn), color = as.factor(low_VOC_home), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Usage of Paints", color = "Usage of Low VOC Material") +
+  ggtitle("BP versus Month for Different Homes with corresponding usage of paint and building material")
+dep_plot2
+```
+
+
+
+```{r, echo = F}
+selected_data_ES_detected_complete = selected_data_ES_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+dep_plot2 = ggplot(selected_data_ES_detected_complete, aes(x = Period, y = Ethylhexyl_salicylate, linetype=as.factor(paints_yn), color = as.factor(low_VOC_home), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Usage of Paints", color = "Usage of Low VOC Material") +
+  ggtitle("Ethylhexyl_salicylate versus Month for Different Homes with corresponding usage of paint and building material")
+dep_plot2
+```
+
+
+
+```{r, echo=FALSE}
+selected_data_BS_detected_complete = selected_data_BS_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+BS_voc_plot = ggplot(selected_data_BS_detected_complete, aes(x = Period, y = Benzyl_salicylate, color = as.factor(low_VOC_home), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Usage of Low VOC Material") +
+  ggtitle("Benzyl_salicylate versus Month for Different Homes with corresponding type of building material")
+
+```
+
+
+```{r,echo=FALSE}
+selected_data_BS_detected_complete = selected_data_BS_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+BS_paint_plot = ggplot(selected_data_BS_detected_complete, aes(x = Period, y = Benzyl_salicylate, color=as.factor(paints_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Usage of Paints") +
+  ggtitle("Benzyl_salicylate versus Month for Different Homes with corresponding usage of paint")
+
+grid.arrange(BS_voc_plot, BS_paint_plot, nrow = 2, ncol = 1
+             )
+```
+
+
+
+```{r, echo =FALSE}
+selected_data_HS_detected_complete = selected_data_HS_detected %>% group_by(House_ID) %>%
+  filter(n() >= 4) %>%
+  ungroup()
+
+dep_plot2 = ggplot(selected_data_HS_detected_complete, aes(x = Period, y = Hexyl_salicylate, linetype=as.factor(paints_yn), color = as.factor(low_VOC_home), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", linetype = "Usage of Paints", color = "Usage of Low VOC Material") +
+  ggtitle("Hexyl_salicylate versus Month for Different Homes with corresponding usage of paint and building material")
+dep_plot2
+```
+
+
+```{r, echo=FALSE}
+HS_dogcat = ggplot(selected_data_HS_detected_complete, aes(x = Period, y = Hexyl_salicylate,  color = as.factor(dogcat_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Has_Pet") +
+  ggtitle("Hexyl_salicylate versus Month for Different Homes with or without pets(dog/cat)")
+
+ES_dogcat = ggplot(selected_data_ES_detected_complete, aes(x = Period, y = Ethylhexyl_salicylate,  color = as.factor(dogcat_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Has_Pet") +
+  ggtitle("Ethylhexyl_salicylate versus Month for Different Homes with or without pets(dog/cat)")
+
+BS_dogcat = ggplot(selected_data_BS_detected_complete, aes(x = Period, y = Benzyl_salicylate,  color = as.factor(dogcat_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Has_Pet") +
+  ggtitle("Benzyl_salicylate versus Month for Different Homes with or without pets(dog/cat)")
+
+grid.arrange(HS_dogcat, ES_dogcat, BS_dogcat, nrow = 3, ncol = 1)
+
+```
+
+
+```{r, echo=FALSE}
+BP_dogcat = ggplot(selected_data_HS_detected_complete, aes(x = Period, y = BPs,  color = as.factor(dogcat_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Has_Pet") +
+  ggtitle("BP versus Month for Different Homes with or without pets(dog/cat)")
+
+BP_3_dogcat = ggplot(selected_data_ES_detected_complete, aes(x = Period, y = BP_3,  color = as.factor(dogcat_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Has_Pet") +
+  ggtitle("BP_3 versus Month for Different Homes with or without pets(dog/cat)")
+
+BP_8_dogcat = ggplot(selected_data_BS_detected_complete, aes(x = Period, y = BP_8,  color = as.factor(dogcat_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Has_Pet") +
+  ggtitle("BP_8 versus Month for Different Homes with or without pets(dog/cat)")
+
+grid.arrange(BP_dogcat, BP_3_dogcat, BP_8_dogcat, nrow = 3, ncol = 1)
+```
+
+
+```{r, include = F, echo=FALSE}
+# Convert <DL value to the detection value 
+selected_data$BPs[is.na(selected_data$BPs)] <- 6.1/2
+selected_data$BP_3[is.na(selected_data$BP_3)] <- 25/2
+selected_data$BP_8[is.na(selected_data$BP_8)] <- 6.3/2
+selected_data$Benzyl_salicylate[is.na(selected_data$Benzyl_salicylate)] <- 17/2
+selected_data$Ethylhexyl_salicylate[is.na(selected_data$Ethylhexyl_salicylate)] <- 35/2
+selected_data$Hexyl_salicylate[is.na(selected_data$Hexyl_salicylate)] <- 34/2
+```
+
+
+```{r, include = TRUE, echo=FALSE}
+#ccf
+
+house28 = selected_data %>% filter(House_ID == "NHAQS-028" & Period %in% c(0, 3, 6, 9, 12))
+house29 = selected_data %>% filter(House_ID == "NHAQS-029" & Period %in% c(0, 3, 6, 9, 12))
+house30 = selected_data %>% filter(House_ID == "NHAQS-030" & Period %in% c(0, 3, 6, 9, 12))
+house31 = selected_data %>% filter(House_ID == "NHAQS-031" & Period %in% c(0, 3, 6, 9, 12))
+house32 = selected_data %>% filter(House_ID == "NHAQS-032" & Period %in% c(0, 3, 6, 9, 12))
+house34 = selected_data %>% filter(House_ID == "NHAQS-034" & Period %in% c(0, 3, 6, 9, 12))
+house36 = selected_data %>% filter(House_ID == "NHAQS-036" & Period %in% c(0, 3, 6, 9, 12))
+
+ccf1 <- function(house) {
+  house <- house[order(house$Period), ]
+  
+  Benzyl_salicylate = as.numeric(house$Benzyl_salicylate)
+  Ethylhexyl_salicylate = as.numeric(house$Ethylhexyl_salicylate)
+  Hexyl_salicylate = as.numeric(house$Hexyl_salicylate)
+  BPs = as.numeric(house$BPs)
+  BP_3 = as.numeric(house$BP_3)
+  BP_8 = as.numeric(house$BP_8)
+  
+  ccf(Benzyl_salicylate, Ethylhexyl_salicylate, type= "correlation")
+  ccf(Benzyl_salicylate, Hexyl_salicylate)
+  ccf(Benzyl_salicylate, BPs)
+  ccf(Benzyl_salicylate, BP_3)
+  ccf(Benzyl_salicylate, BP_8)
+  
+  ccf(Ethylhexyl_salicylate, Hexyl_salicylate)
+  ccf(Ethylhexyl_salicylate, BPs)
+  ccf(Ethylhexyl_salicylate, BP_3)
+  ccf(Ethylhexyl_salicylate, BP_8)
+  
+  ccf(Hexyl_salicylate, BPs)
+  ccf(Hexyl_salicylate, BP_3)
+  ccf(Hexyl_salicylate, BP_8)
+
+  ccf(BPs, BP_3)
+  ccf(BPs, BP_8)
+  
+  ccf(BP_3, BP_8)
+}
+
+
+ccf2 <- function(house) {
+  house <- house[order(house$Period), ]
+  
+  Benzyl_salicylate = as.numeric(house$Benzyl_salicylate)
+  Ethylhexyl_salicylate = as.numeric(house$Ethylhexyl_salicylate)
+  Hexyl_salicylate = as.numeric(house$Hexyl_salicylate)
+  BPs = as.numeric(house$BPs)
+  BP_3 = as.numeric(house$BP_3)
+  BP_8 = as.numeric(house$BP_8)
+  
+  ccf(Benzyl_salicylate, Ethylhexyl_salicylate, type= "correlation")
+  ccf(Benzyl_salicylate, Hexyl_salicylate)
+  ccf(Benzyl_salicylate, BPs)
+  ccf(Benzyl_salicylate, BP_3)
+  ccf(Benzyl_salicylate, BP_8)
+  
+  ccf(Ethylhexyl_salicylate, Hexyl_salicylate)
+  ccf(Ethylhexyl_salicylate, BPs)
+  ccf(Ethylhexyl_salicylate, BP_3)
+  ccf(Ethylhexyl_salicylate, BP_8)
+  
+  ccf(Hexyl_salicylate, BPs)
+  ccf(Hexyl_salicylate, BP_3)
+  ccf(Hexyl_salicylate, BP_8)
+
+  ccf(BPs, BP_3)
+  ccf(BPs, BP_8)
+  
+  ccf(BP_3, BP_8)
+}
+
+par(mfrow = c(3,3))
+
+ccf1(house28)
+```
+
+```{r, include = T, echo=FALSE}
+par(mfrow = c(2,3))
+ccf2(house28)
+```
+
+
+
+
+```{r, include = T, echo=}
+house = house29
+house <- house[order(house$Period), ]
+  
+  Benzyl_salicylate = as.numeric(house$Benzyl_salicylate)
+  Ethylhexyl_salicylate = as.numeric(house$Ethylhexyl_salicylate)
+  Hexyl_salicylate = as.numeric(house$Hexyl_salicylate)
+  BPs = as.numeric(house$BPs)
+  BP_3 = as.numeric(house$BP_3)
+  BP_8 = as.numeric(house$BP_8)
+  
+  ccf(Benzyl_salicylate, Ethylhexyl_salicylate, type= "correlation")
+  ccf(Benzyl_salicylate, BPs)
+  ccf(Benzyl_salicylate, BP_3)
+  ccf(Benzyl_salicylate, BP_8)
+  
+  ccf(Ethylhexyl_salicylate, BPs)
+  ccf(Ethylhexyl_salicylate, BP_3)
+  ccf(Ethylhexyl_salicylate, BP_8)
+  
+
+  ccf(BPs, BP_3)
+  ccf(BPs, BP_8)
+  
+  ccf(BP_3, BP_8)
+  par(mfrow = c(3,4))
+```
+
+
+```{r, include = F, echo=FALSE}
+par(mfrow = c(3,3))
+
+ccf1(house30)
+```
+
+```{r, include = F, echo=FALSE}
+par(mfrow = c(2,3))
+ccf2(house30)
+```
+
+
+
+
+
+```{r, include = F, echo=FALSE}
+par(mfrow = c(3,3))
+
+ccf1(house31)
+```
+
+```{r, include = F, echo=FALSE}
+par(mfrow = c(2,3))
+ccf2(house31)
+```
+
+
+
+```{r}
+par(mfrow = c(3,3))
+
+ccf1(house32)
+```
+
+```{r}
+par(mfrow = c(2,3))
+ccf2(house32)
+```
+
+
+```{r, include = F, echo=FALSE}
+par(mfrow = c(3,3))
+
+ccf1(house34)
+```
+
+```{r, include = F, echo=FALSE}
+par(mfrow = c(2,3))
+ccf2(house34)
+```
+
+
+```{r, include = F, echo=FALSE}
+par(mfrow = c(3,3))
+
+ccf1(house36)
+```
+
+```{r, include = F, echo=FALSE}
+par(mfrow = c(2,3))
+ccf2(house36)
+```
+
+House 29:
+ES BP3 lag1
+BP BP8 lag1
+
+House 30:
+Hexyl_salicylate and BP_3 has significance in house30 at lag 0
+
+House 31:
+Hexyl_salicylate and BP_3 has significance in house31 at lag 1
+
+House 32:
+BS & BPs at lag 0
+BS & BP3 at lag -1
+ES & HS at lag 0
+ES & BP3 at lag -1
+HS & BPs lag 1
+BPs & BP3 lag -1
+HS & BP3 lag 0
+
+This suggests that for house32, many chemicals have similar trend almost at the same time or at a slightly different time.
+
+House 34:
+ES BP8 lag0
+BP3 BP8 lag0
+HS BP3 lag0
+HS BP8 lag0
+
+House36:
+BS HS lag0
+
+Positive correlations at lag 0 or 1 suggest a direct or short-term positive relationship between the variables, indicating that they tend to increase or decrease together, either simultaneously or with a short delay.
+
+Negative correlations at lag 0 or 1 suggest an inverse relationship, indicating that an increase in one variable is associated with a decrease in the other, either simultaneously or with a short delay.
+
+```{r,include=FALSE,echo=FALSE}
+ggplot(selected_data, aes(x = BP_3, y = Hexyl_salicylate)) +
+  geom_point() +
+  labs(x = "BP_3", y = "Hexyl Salicylate") +
+  #geom_smooth(method = "lm", se = TRUE, color = "red", fill = "lightblue") +
+  ggtitle("Scatter Plot of BP_3 vs. Hexyl_salicylate") +
+  theme_minimal()
+```
+

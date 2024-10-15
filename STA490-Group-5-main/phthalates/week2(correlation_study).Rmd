@@ -1,0 +1,120 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(janitor)
+library(hrbrthemes)
+
+```
+
+
+```{r data set up}
+phaletes <- read_excel("../data/New Home Study- SVOCs_University of Toronto_March2024.xlsx", sheet = "Passive Air - PDMS (pg.m-3)",range = "A5:N145")
+colnames(phaletes)[which(names(phaletes) == "House ID")] <- "House_ID" #change column names
+colnames(phaletes)[which(names(phaletes) == "Sample ID")] <- "Sample_ID" #change column names 
+colnames(phaletes)[which(names(phaletes) == "Period (month)")] <- "Period"
+phaletes_detected <- phaletes[phaletes$Period %in% c(0, 3, 6, 9, 12), ]
+phaletes_filled <- phaletes_detected %>%
+  mutate(
+DEP = ifelse(DEP == "<DL", 50/2, as.numeric(DEP)),
+DPP = ifelse(DPP == "<DL", 101/2, as.numeric(DPP)),
+DiBP = ifelse(DiBP == "<DL", 80/2, as.numeric(DiBP)),
+DnBP = ifelse(DnBP == "<DL", 103/2, as.numeric(DnBP)),
+BzBP = ifelse(BzBP == "<DL", 87/2, as.numeric(BzBP)),
+DEHP = ifelse(DEHP == "<DL", 75/2, as.numeric(DEHP)),
+DnOP = ifelse(DnOP == "<DL", 69/2, as.numeric(DnOP)),
+DiNP = ifelse(DiNP == "<DL", 102/2, as.numeric(DiNP))
+) %>% 
+  mutate(Period = as.numeric(as.character(Period))) %>%
+  arrange(House_ID)
+complete_houses <- phaletes_filled %>%
+  group_by(House_ID) %>%
+  filter(n_distinct(Period) == 5) %>%
+  ungroup()
+```
+
+```{r}
+chemicals <- complete_houses[, c("House_ID","Period","DEP", "DPP", "DiBP", "DnBP", "BzBP", "DEHP", "DnOP","DiNP")]
+
+aggregated_df <- chemicals %>%
+  group_by(Period) %>%
+  summarise(
+    DEP = mean(DEP),
+    DPP = mean(DPP),
+    DiBP = mean(DiBP),
+    DnBP = mean(DnBP),
+    BzBP = mean(BzBP),
+    DEHP = mean(DEHP),
+    DnOP = mean(DEHP),
+    DiNP = mean(DiNP))
+
+  
+  
+
+# Convert the data frame to a time series object for each chemical
+# the period column represents months with records at 0, 3, 6, 9, 12
+# Set the start to the first period (month 0) of the first year and frequency to 5
+chemicals_ts <- lapply(aggregated_df[, -1], function(x) ts(x, start = c(2020, 1), frequency = 5))  # 5 periods per year
+
+# Normalize the data 
+chemicals_ts <- lapply(chemicals_ts, scale)
+
+# Function to plot cross-correlation for a given pair of chemicals
+plot_ccf <- function(ts1, ts2, name1, name2) {
+  ts1 <- as.numeric(ts1)  
+  ts2 <- as.numeric(ts2)
+  ccf_result <- ccf(ts1, ts2,lag = 5,plot = FALSE)
+  print(ccf_result)
+  plot(ccf_result, main = paste("Cross-Correlation between", name1, "and", name2))
+}
+
+# Loop through each pair of chemicals and plot cross-correlation
+chemical_names <- colnames(aggregated_df)[-1]
+for(i in 1:(length(chemicals_ts) - 1)) {
+  for(j in (i + 1):length(chemicals_ts)) {
+    plot_ccf(chemicals_ts[[i]], chemicals_ts[[j]], chemical_names[i], chemical_names[j])
+  }
+}
+
+
+```
+### Positive Lags (1, 2, 3): second series  is lagged behind the first series 
+### Negative Lags (-1, -2, -3): first series  is lagged behind the second series 
+
+1. DEP & DnBP
+2. DEP &DEHP
+3. DEP & DnOP
+4. DPP & DiBP
+5. DPP & DNBP ***
+6. DPP & BzBP
+7. DiBP & DiNP
+8. DEHP & DnOP ***
+
+```{r}
+# Loop through each pair of chemicals and plot cross-correlation
+chemical_columns <- colnames(phaletes_filled)[7:14] # Adjust this based on the actual column indices
+phaletes_normalized <- phaletes_filled
+phaletes_normalized[chemical_columns] <- lapply(phaletes_filled[chemical_columns], scale)
+
+
+# Loop through each pair of chemicals and plot cross-correlation
+for (i in 1:(length(chemical_columns) - 1)) {
+  for (j in (i + 1):length(chemical_columns)) {
+    p <- ggplot(phaletes_normalized, aes_string(x = chemical_columns[i], y = chemical_columns[j])) + 
+      geom_point(color = "#69b3a2") +
+      geom_smooth(method = "lm", color = "red", fill = "#69b3a2", se = TRUE) +
+      theme_ipsum() +
+      ggtitle(paste("Scatter Plot with Linear Regression between", chemical_columns[i], "and", chemical_columns[j]))
+    print(p)
+  }
+}
+
+```
+### 1. DPP and DnBP are significantly correlated 2. (DnOP and DiNP), (DPP, DiNP)are weakly correlated 3. 

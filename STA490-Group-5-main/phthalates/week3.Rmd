@@ -1,0 +1,347 @@
+### survey table has records, chemical table does not
+
+
+```{r}
+phaletes <- read_excel("../data/New Home Study- SVOCs_University of Toronto_March2024.xlsx", sheet = "Passive Air - PDMS (pg.m-3)",range = "A5:N145")
+colnames(phaletes)[which(names(phaletes) == "House ID")] <- "House_ID" #change column names
+colnames(phaletes)[which(names(phaletes) == "Sample ID")] <- "Sample_ID" #change column names 
+colnames(phaletes)[which(names(phaletes) == "Period (month)")] <- "Period"
+phaletes_detected <- phaletes[phaletes$Period %in% c(0, 3, 6, 9, 12), ]
+phaletes_filled <- phaletes_detected %>%
+  mutate(
+DEP = ifelse(DEP == "<DL", 50/2, as.numeric(DEP)),
+DPP = ifelse(DPP == "<DL", 101/2, as.numeric(DPP)),
+DiBP = ifelse(DiBP == "<DL", 80/2, as.numeric(DiBP)),
+DnBP = ifelse(DnBP == "<DL", 103/2, as.numeric(DnBP)),
+BzBP = ifelse(BzBP == "<DL", 87/2, as.numeric(BzBP)),
+DEHP = ifelse(DEHP == "<DL", 75/2, as.numeric(DEHP)),
+DnOP = ifelse(DnOP == "<DL", 69/2, as.numeric(DnOP)),
+DiNP = ifelse(DiNP == "<DL", 102/2, as.numeric(DiNP))
+) %>% 
+  mutate(Period = as.numeric(as.character(Period))) %>%
+  arrange(House_ID)
+```
+```{r}
+tech_survey <- read_excel("../data/20231027_Technician Survey Data.xlsx")
+que_survey <- read_excel("../data/20231027_0-12 Month Questionnaire Data.xlsx")
+```
+
+```{r}
+tech_survey_data <- tech_survey %>% select(id,sprayfoam_ins_yn, fiberglass_ins_yn, fiberglass_ins_yn, Styrofoam_ins_yn, cellulose_ins_yn, unknown_ins_yn,other_ins_yn)
+que_survey_data <- que_survey %>% select(id, date, nailpolish_yn, perfume_yn, hspray_yn, n_kmat_new,n_tmat_new, n_mat_cover_new ,n_uph_chair_new
+,n_uph_sofa_new
+,n_uph_ottoman_new
+,n_uph_kids_new
+,n_uph_other_new
+,n_comp_dining_new
+,n_comp_bed_new
+,n_comp_dresser_new
+,n_comp_desk_new
+,n_comp_accent_new
+,dogcat_yn
+,cig_yn
+,cannabis_yn
+,paints_yn
+,low_VOC_home
+)
+
+que_survey_data$date <- as.Date(que_survey_data$date, format = "%m/%d/%Y")
+
+que_survey_data <- que_survey_data %>%
+  arrange(id,date)
+ 
+```
+
+
+```{r}
+ggplot(phaletes_filled, aes(x = Period, y = DEP, group = as.factor(House_ID), color = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'House_ID') +
+  ggtitle("DEP versus Month for Different Homes") +
+  theme_minimal()
+
+ggplot(phaletes_filled, aes(x = Period, y = DPP, group = as.factor(House_ID), color = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'House_ID') +
+  ggtitle("DPP versus Month for Different Homes") +
+  theme_minimal()
+
+ggplot(phaletes_filled, aes(x = Period, y = DiBP, group = as.factor(House_ID), color = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'House_ID') +
+  ggtitle("DiBP versus Month for Different Homes") +
+  theme_minimal()
+
+ggplot(phaletes_filled, aes(x = Period, y = DnBP, group = as.factor(House_ID), color = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'House_ID') +
+  ggtitle("DnBP versus Month for Different Homes") +
+  theme_minimal()
+
+ggplot(phaletes_filled, aes(x = Period, y = BzBP, group = as.factor(House_ID), color = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'House_ID') +
+  ggtitle("BzBP versus Month for Different Homes") +
+  theme_minimal()
+
+ggplot(phaletes_filled, aes(x = Period, y = DEHP, group = as.factor(House_ID), color = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'House_ID') +
+  ggtitle("DEHP versus Month for Different Homes") +
+  theme_minimal()
+
+ggplot(phaletes_filled, aes(x = Period, y = DnOP, group = as.factor(House_ID), color = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'House_ID') +
+  ggtitle("DnOP versus Month for Different Homes") +
+  theme_minimal()
+
+ggplot(phaletes_filled, aes(x = Period, y = DiNP, group = as.factor(House_ID), color = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'House_ID') +
+  ggtitle("DiNP versus Month for Different Homes") +
+  theme_minimal()
+```
+```{r}
+library(ggplot2)
+library(plotly)
+
+p <- ggplot(phaletes_filled, aes(x = Period, y = DEP, group = as.factor(House_ID), color = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'House_ID') +
+  ggtitle("DEP versus Month for Different Homes") +
+  theme_minimal()
+
+ggplotly(p)
+```
+
+
+```{r}
+library(gridExtra)
+
+# Sample data (replace this with your actual dataframe)
+# full_data_tech <- your_dataframe
+
+# Aggregate the data
+aggregated_df <- full_data_tech %>%
+  group_by(Period, Styrofoam_ins_yn) %>%
+  summarise(
+    DEP = mean(DEP, na.rm = TRUE),
+    DPP = mean(DPP, na.rm = TRUE),
+    DiBP = mean(DiBP, na.rm = TRUE),
+    DnBP = mean(DnBP, na.rm = TRUE),
+    BzBP = mean(BzBP, na.rm = TRUE),
+    DEHP = mean(DEHP, na.rm = TRUE),
+    DnOP = mean(DnOP, na.rm = TRUE),
+    DiNP = mean(DiNP, na.rm = TRUE)
+  )
+
+# Create individual plots
+plot_DEP <- ggplot(aggregated_df, aes(x = Period, y = DEP, group = as.factor(Styrofoam_ins_yn), color = as.factor(Styrofoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Styrofoam') +
+  ggtitle("Average DEP versus Month") +
+  theme_minimal()
+
+plot_DPP <- ggplot(aggregated_df, aes(x = Period, y = DPP, group = as.factor(Styrofoam_ins_yn), color = as.factor(Styrofoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Styrofoam') +
+  ggtitle("Average DPP versus Month") +
+  theme_minimal()
+
+plot_DiBP <- ggplot(aggregated_df, aes(x = Period, y = DiBP, group = as.factor(Styrofoam_ins_yn), color = as.factor(Styrofoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Styrofoam') +
+  ggtitle("Average DiBP versus Month") +
+  theme_minimal()
+
+plot_DnBP <- ggplot(aggregated_df, aes(x = Period, y = DnBP, group = as.factor(Styrofoam_ins_yn), color = as.factor(Styrofoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Styrofoam') +
+  ggtitle("Average DnBP versus Month") +
+  theme_minimal()
+
+plot_BzBP <- ggplot(aggregated_df, aes(x = Period, y = BzBP, group = as.factor(Styrofoam_ins_yn), color = as.factor(Styrofoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Styrofoam') +
+  ggtitle("Average BzBP versus Month") +
+  theme_minimal()
+
+plot_DEHP <- ggplot(aggregated_df, aes(x = Period, y = DEHP, group = as.factor(Styrofoam_ins_yn), color = as.factor(Styrofoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Styrofoam') +
+  ggtitle("Average DEHP versus Month") +
+  theme_minimal()
+
+plot_DnOP <- ggplot(aggregated_df, aes(x = Period, y = DnOP, group = as.factor(Styrofoam_ins_yn), color = as.factor(Styrofoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Styrofoam') +
+  ggtitle("Average DnOP versus Month") +
+  theme_minimal()
+
+plot_DiNP <- ggplot(aggregated_df, aes(x = Period, y = DiNP, group = as.factor(Styrofoam_ins_yn), color = as.factor(Styrofoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Styrofoam') +
+  ggtitle("Average DiNP versus Month") +
+  theme_minimal()
+
+# Arrange the plots in a 2x4 grid
+grid.arrange(plot_DEP, plot_DPP, plot_DiBP, plot_DnBP, plot_BzBP, plot_DEHP, plot_DnOP, plot_DiNP, ncol = 2,nrow=4)
+
+```
+
+
+
+
+
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+# Sample data (replace this with your actual dataframe)
+# full_data_tech <- your_dataframe
+
+# Aggregate the data
+aggregated_df <- full_data_tech %>%
+  group_by(Period, fiberglass_ins_yn) %>%
+  summarise(
+    DEP = mean(DEP, na.rm = TRUE),
+    DPP = mean(DPP, na.rm = TRUE),
+    DiBP = mean(DiBP, na.rm = TRUE),
+    DnBP = mean(DnBP, na.rm = TRUE),
+    BzBP = mean(BzBP, na.rm = TRUE),
+    DEHP = mean(DEHP, na.rm = TRUE),
+    DnOP = mean(DnOP, na.rm = TRUE),
+    DiNP = mean(DiNP, na.rm = TRUE)
+  )
+
+# Create individual plots
+plot_DEP <- ggplot(aggregated_df, aes(x = Period, y = DEP, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average DEP versus Month") +
+  theme_minimal()
+
+plot_DPP <- ggplot(aggregated_df, aes(x = Period, y = DPP, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average DPP versus Month") +
+  theme_minimal()
+
+plot_DiBP <- ggplot(aggregated_df, aes(x = Period, y = DiBP, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average DiBP versus Month") +
+  theme_minimal()
+
+plot_DnBP <- ggplot(aggregated_df, aes(x = Period, y = DnBP, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average DnBP versus Month") +
+  theme_minimal()
+
+plot_BzBP <- ggplot(aggregated_df, aes(x = Period, y = BzBP, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average BzBP versus Month") +
+  theme_minimal()
+
+plot_DEHP <- ggplot(aggregated_df, aes(x = Period, y = DEHP, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average DEHP versus Month") +
+  theme_minimal()
+
+plot_DnOP <- ggplot(aggregated_df, aes(x = Period, y = DnOP, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average DnOP versus Month") +
+  theme_minimal()
+
+plot_DiNP <- ggplot(aggregated_df, aes(x = Period, y = DiNP, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average DiNP versus Month") +
+  theme_minimal()
+
+# Arrange the plots in a 2x4 grid
+grid.arrange(plot_DEP, plot_DPP, plot_DiBP, plot_DnBP, plot_BzBP, plot_DEHP, plot_DnOP, plot_DiNP, ncol = 2)
+```
+```{r}
+
+
+# Aggregate the data
+aggregated_df <- full_data_tech %>%
+  group_by(Period, sprayfoam_ins_yn) %>%
+  summarise(
+    DEP = mean(DEP, na.rm = TRUE),
+    DPP = mean(DPP, na.rm = TRUE),
+    DiBP = mean(DiBP, na.rm = TRUE),
+    DnBP = mean(DnBP, na.rm = TRUE),
+    BzBP = mean(BzBP, na.rm = TRUE),
+    DEHP = mean(DEHP, na.rm = TRUE),
+    DnOP = mean(DnOP, na.rm = TRUE),
+    DiNP = mean(DiNP, na.rm = TRUE)
+  )
+
+# Create individual plots
+plot_DEP <- ggplot(aggregated_df, aes(x = Period, y = DEP, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average DEP versus Month") +
+  theme_minimal()
+
+plot_DPP <- ggplot(aggregated_df, aes(x = Period, y = DPP, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average DPP versus Month") +
+  theme_minimal()
+
+plot_DiBP <- ggplot(aggregated_df, aes(x = Period, y = DiBP, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average DiBP versus Month") +
+  theme_minimal()
+
+plot_DnBP <- ggplot(aggregated_df, aes(x = Period, y = DnBP, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average DnBP versus Month") +
+  theme_minimal()
+
+plot_BzBP <- ggplot(aggregated_df, aes(x = Period, y = BzBP, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average BzBP versus Month") +
+  theme_minimal()
+
+plot_DEHP <- ggplot(aggregated_df, aes(x = Period, y = DEHP, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average DEHP versus Month") +
+  theme_minimal()
+
+plot_DnOP <- ggplot(aggregated_df, aes(x = Period, y = DnOP, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average DnOP versus Month") +
+  theme_minimal()
+
+plot_DiNP <- ggplot(aggregated_df, aes(x = Period, y = DiNP, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average DiNP versus Month") +
+  theme_minimal()
+
+# Arrange the plots in a 2x4 grid
+grid.arrange(plot_DEP, plot_DPP, plot_DiBP, plot_DnBP, plot_BzBP, plot_DEHP, plot_DnOP, plot_DiNP, ncol = 2)
+```
+
+
+
+
+
+

@@ -1,0 +1,277 @@
+
+
+```{r}
+survey_data <- read_excel("../data/20231027_0-12 Month Questionnaire Data.xlsx")
+
+
+
+survey_data <- read_excel("../data/20231027_0-12 Month Questionnaire Data.xlsx")
+
+# Function to delete last three to fourth character of a date string
+delete_characters <- function(date_string) {
+  substr(date_string, 1, nchar(date_string) - 4) %>% 
+    paste0(substr(date_string, nchar(date_string) - 1, nchar(date_string)))
+}
+
+survey_data$date = sapply(survey_data$date, delete_characters) 
+
+survey_data$date <- as.Date(survey_data$date, "%m/%d/%y")
+
+# Order by House ID and then by Start date
+survey_data <- survey_data %>%
+  arrange(id, date)
+
+```
+
+
+
+```{r}
+### READ IN CONCENTRATION DATA, please look for !!!, you might need to change code at !!!section
+
+phaletes <- read_excel("../data/New Home Study- SVOCs_University of Toronto_March2024.xlsx", sheet = "Passive Air - PDMS (pg.m-3)",range = "A5:N145")
+colnames(phaletes)[which(names(phaletes) == "House ID")] <- "House_ID" #change column names
+colnames(phaletes)[which(names(phaletes) == "Sample ID")] <- "Sample_ID" #change column names 
+colnames(phaletes)[which(names(phaletes) == "Period (month)")] <- "Period"
+phaletes_detected <- phaletes[phaletes$Period %in% c(0, 3, 6, 9, 12), ]
+phaletes_filled <- phaletes_detected %>%
+  mutate(
+DEP = ifelse(DEP == "<DL", 50/2, as.numeric(DEP)),
+DPP = ifelse(DPP == "<DL", 101/2, as.numeric(DPP)),
+DiBP = ifelse(DiBP == "<DL", 80/2, as.numeric(DiBP)),
+DnBP = ifelse(DnBP == "<DL", 103/2, as.numeric(DnBP)),
+BzBP = ifelse(BzBP == "<DL", 87/2, as.numeric(BzBP)),
+DEHP = ifelse(DEHP == "<DL", 75/2, as.numeric(DEHP)),
+DnOP = ifelse(DnOP == "<DL", 69/2, as.numeric(DnOP)),
+DiNP = ifelse(DiNP == "<DL", 102/2, as.numeric(DiNP))
+) %>% 
+  mutate(Period = as.numeric(as.character(Period))) %>%
+  arrange(House_ID)
+
+
+
+# Get the column names of chemical data
+chemical_columns <- c("DEP", "DPP", "DiBP", "DnBP", "BzBP", "DEHP", "DnOP","DiNP")
+
+# Select columns with "<DL" frequency below 50%
+calculate_dl_frequency <- function(column) {
+  return(sum(column == "<DL") / length(column))
+}
+
+
+
+
+
+
+
+
+```
+
+
+
+
+```{r}
+phaletes_filled <- phaletes_filled %>%
+  rename('start_date'="Start date \r\n(yyyy-mm-dd)")
+colnames(phaletes_filled)
+```
+```{r}
+# Change the date for the selected data to date
+phaletes_filled$start_date<- as.Date(phaletes_filled$start_date, format = "%Y-%m-%d",origin = "1900-01-01")
+
+
+
+# Create a new column 'period' initialized with NA
+survey_data$period <- NA
+
+# Loop through each row of survey_data
+for (i in 1:nrow(survey_data)) {
+  # Extract current row's id and date
+  current_id <- survey_data$id[i]
+  current_date <- survey_data$date[i]
+  
+  # Filter selected_data to find matching rows
+  matching_rows <- phaletes_filled %>%
+    filter(House_ID == current_id & abs(difftime(phaletes_filled$start_date, current_date, units = "days")) <= 30)
+  
+  # If there are matching rows, take the first period_value
+  if (nrow(matching_rows) > 0) {
+    survey_data$period[i] <- matching_rows$Period[1]
+  }
+}
+```
+
+
+```{r}
+# Merge the dataset using left join
+Survey_Selected_Merged = left_join(phaletes_filled, survey_data, by = c('House_ID'='id', 'Period' = 'period'))
+
+# Merge with tech data to get the full data
+tech_survey_data = read_excel("../data/20231027_Technician Survey Data.xlsx")
+full_data_Matched_Period = left_join(Survey_Selected_Merged, tech_survey_data, by = c('House_ID' = 'id'))
+```
+
+
+```{r}
+# Combine all type of furniture as new furniture as a group
+
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(new_furniture_yn = case_when(n_kmat_new > 0 | n_mat_cover_new > 0 | n_tmat_new > 0 | n_uph_chair_new > 0 | n_uph_sofa_new > 0 | n_uph_ottoman_new > 0 | n_uph_kids_new > 0 | n_uph_other_new > 0 | n_comp_dining_new > 0 | n_comp_bed_new > 0 | n_comp_dresser_new > 0 | n_comp_desk_new > 0 | n_comp_accent_new > 0 | n_comp_other_new > 0 ~ 1, is.na(n_kmat_new) & is.na(n_mat_cover_new) & is.na(n_tmat_new) & is.na(n_uph_chair_new) & is.na(n_uph_sofa_new) & is.na(n_uph_ottoman_new) & is.na(n_uph_kids_new) & is.na(n_uph_other_new) & is.na(n_comp_dining_new) & is.na(n_comp_bed_new) & is.na(n_comp_dresser_new) & is.na(n_comp_desk_new) & is.na(n_comp_accent_new) & is.na(n_comp_other_new) ~ NA, .default = 0))
+
+full_data_Matched_Period <- full_data_Matched_Period %>%
+  mutate(
+    # Calculate the total count of new furniture, ignoring NA values
+    new_furniture_count = case_when(
+      rowSums(is.na(select(., n_kmat_new, n_mat_cover_new, n_tmat_new, n_uph_chair_new, n_uph_sofa_new, n_uph_ottoman_new, n_uph_kids_new, n_uph_other_new, n_comp_dining_new, n_comp_bed_new, n_comp_dresser_new, n_comp_desk_new, n_comp_accent_new, n_comp_other_new))) == length(select(., n_kmat_new, n_mat_cover_new, n_tmat_new, n_uph_chair_new, n_uph_sofa_new, n_uph_ottoman_new, n_uph_kids_new, n_uph_other_new, n_comp_dining_new, n_comp_bed_new, n_comp_dresser_new, n_comp_desk_new, n_comp_accent_new, n_comp_other_new)) ~ NA_real_,
+      TRUE ~ rowSums(select(., n_kmat_new, n_mat_cover_new, n_tmat_new, n_uph_chair_new, n_uph_sofa_new, n_uph_ottoman_new, n_uph_kids_new, n_uph_other_new, n_comp_dining_new, n_comp_bed_new, n_comp_dresser_new, n_comp_desk_new, n_comp_accent_new, n_comp_other_new), na.rm = TRUE)
+    )
+  )
+
+full_data_Matched_Period <- full_data_Matched_Period %>% 
+  mutate(morethan3_new_furniture = case_when(
+    new_furniture_count >= 3 ~ 1, 
+    new_furniture_count < 3 ~ 0, 
+    is.na(new_furniture_count) ~ NA_real_,
+    TRUE ~ NA_real_
+  ))
+
+
+
+```
+
+```{r}
+# Number of days where any cleaning product was used, number of days where a personal care product was used, and number of dusting days are also items to look into. Sara also recommended looking at number of rooms painted, any time a renovation occurred, and anything to do with the HVAC filter
+ggplot(full_data_Matched_Period, aes(x = Period, y = DEP, color = as.factor(new_furniture_yn), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("DEP versus Month for Different Homes with corresponding purchase of new furniture")
+
+view(full_data_Matched_Period[,c("House_ID","new_furniture_yn","Period")])
+
+```
+
+
+
+```{r}
+full_data_Matched_Period <- full_data_Matched_Period %>%
+  group_by(House_ID) %>%
+  mutate(new_furniture_adj = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  ungroup()
+```
+
+```{r}
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DEP, color = as.factor(new_furniture_adj), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("DEP versus Month for Different Homes with corresponding purchase of new furniture")
+
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DPP, color = as.factor(new_furniture_adj), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("DPP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DiBP, color = as.factor(new_furniture_adj), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("DiBP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DnBP, color = as.factor(new_furniture_adj), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("DnBP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = BzBP, color = as.factor(new_furniture_adj), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("BzBP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DEHP, color = as.factor(new_furniture_adj), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("DEHP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DnOP, color = as.factor(new_furniture_adj), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("DnOP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DiNP, color = as.factor(new_furniture_adj), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("DiNP versus Month for Different Homes with corresponding purchase of new furniture")
+
+```
+```{r}
+full_data_Matched_Period <- full_data_Matched_Period %>%
+  group_by(House_ID) %>%
+  mutate(morethan3_new_furniture = lead(morethan3_new_furniture, n = 1, default = NA)) %>%
+  ungroup()
+```
+
+```{r}
+ggplot(full_data_Matched_Period, aes(x = Period, y = DEP, color = as.factor(morethan3_new_furniture), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of 3 or more Furniture") +
+  ggtitle("DEP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DPP, color = as.factor(morethan3_new_furniture), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of 3 or more Furniture") +
+  ggtitle("DPP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DiBP, color = as.factor(morethan3_new_furniture), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of 3 or more Furniture") +
+  ggtitle("DiBP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DnBP, color = as.factor(morethan3_new_furniture), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of 3 or more Furniture") +
+  ggtitle("DnBP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = BzBP, color = as.factor(morethan3_new_furniture), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of 3 or more Furniture") +
+  ggtitle("BzBP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DEHP, color = as.factor(morethan3_new_furniture), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of 3 or more Furniture") +
+  ggtitle("DEHP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DnOP, color = as.factor(morethan3_new_furniture), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color ="Purchase of 3 or more Furniture") +
+  ggtitle("DnOP versus Month for Different Homes with corresponding purchase of new furniture")
+
+ggplot(full_data_Matched_Period, aes(x = Period, y = DiNP, color = as.factor(morethan3_new_furniture), group = as.factor(House_ID))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of 3 or more Furniture") +
+  ggtitle("DiNP versus Month for Different Homes with corresponding purchase of new furniture")
+```
+
+```{r}
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_days_freshener = candles_n_days + oildiff_n_days + airfresh_n_days + sprayfreshener_n_days)
+
+full_data_Matched_Period$n_days_freshener[is.na(full_data_Matched_Period$n_days_freshener)] <- "NA"
+
+custom_colors <- c("0" = "black", "0.5" = "#FFCCCC", "1" = "#FF9999", "2" = "#FF6666", "4" = "#FF3333", 
+                   "5" = "#FF0000", '10' = '#9900FF',"NA" = "grey")
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_freshener = lead(n_days_freshener, n = 1, default = NA)) 
+
+adjusted_data$n_days_freshener <- factor(adjusted_data$n_days_freshener, levels = c("0",'0.5', "1", "2", "4", "5", '10', "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = DPP, color = as.factor(n_days_freshener), group = as.factor(House_ID))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Refreshener Product") +
+  ggtitle("BPs over Month for Different Homes with Number of Days Refreshener Product was Used")
+
+      
+```
+
+
+

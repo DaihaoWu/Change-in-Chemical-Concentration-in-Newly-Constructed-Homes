@@ -1,0 +1,341 @@
+---
+title: "new_SVOC_line_plot_phthalates"
+output: html_document
+date: "2024-07-09"
+---
+
+---
+title: "Chemical Concentrations in each house"
+author: "Tianli"
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(janitor)
+```
+
+
+```{r data set up}
+phaletes <- read_excel("../data/New Home Study- SVOCs_University of Toronto_March2024.xlsx", sheet = "Passive Air - PDMS (pg.m-3)",range = "A5:N145")
+colnames(phaletes)[which(names(phaletes) == "House ID")] <- "House_ID" #change column names
+colnames(phaletes)[which(names(phaletes) == "Sample ID")] <- "Sample_ID" #change column names 
+colnames(phaletes)[which(names(phaletes) == "Period (month)")] <- "Period"
+```
+### Detection Frequency
+```{r}
+chemical_columns <- c("DEP", "DPP", "DiBP", "DnBP", "BzBP", "DEHP", "DnOP","DiNP")
+
+calculate_detection_frequency <- function(df, chemical) {
+  # Calculate the total number of observations for the chemical
+  total_count <- df %>%
+    nrow()  
+
+  # Calculate the number of detected (non-"DL") observations for the chemical
+  detected_count <- df %>%
+    filter(!!sym(chemical) != "<DL" & !is.na(!!sym(chemical))) %>%  # Filter out "DL" and NA values
+    nrow()  # Count the number of remaining rows
+
+  # Calculate the detection frequency as the ratio of detected count to total count
+  frequency <- detected_count / total_count
+
+  # Return a data frame with the chemical name and its detection frequency
+  data.frame(Chemical = chemical, Detection_Frequency = frequency)
+}
+
+detection_frequencies <- bind_rows(lapply(chemical_columns, function(chem) {
+  calculate_detection_frequency(phaletes, chem)
+}))
+
+print(detection_frequencies)
+```
+### number of observations per house(including DL)
+```{r}
+phaletes_detected <- phaletes[phaletes$Period %in% c(0, 3, 6, 9, 12), ]
+observations_per_house <- phaletes_detected %>%
+  group_by(House_ID) %>%
+  summarise(count = n())
+options(tibble.print_max = Inf, tibble.width = Inf)
+print(observations_per_house)
+```
+### number of observations per house(exclude DL)
+```{r}
+
+count_valid_observations <- function(df, chemical) {
+  df %>%
+    filter(!!sym(chemical) != "<DL") %>%
+    group_by(House_ID) %>%
+    summarise(count = n()) %>%
+    mutate(Chemical = chemical)
+}
+
+# Apply the function to each chemical and bind the results together
+observations_per_household_chemical <- bind_rows(lapply(chemical_columns, function(chem) {
+  count_valid_observations(phaletes_detected, chem)
+}))
+
+# Print the result
+print(observations_per_household_chemical)
+
+```
+
+## The Line Plots of all houses and only complete houses
+
+```{r}
+phaletes_filled <- phaletes_detected %>%
+  mutate(
+DEP = ifelse(DEP == "<DL", 50, as.numeric(DEP)),
+DPP = ifelse(DPP == "<DL", 101, as.numeric(DPP)),
+DiBP = ifelse(DiBP == "<DL", 80, as.numeric(DiBP)),
+DnBP = ifelse(DnBP == "<DL", 103, as.numeric(DnBP)),
+BzBP = ifelse(BzBP == "<DL", 87, as.numeric(BzBP)),
+DEHP = ifelse(DEHP == "<DL", 75, as.numeric(DEHP)),
+DnOP = ifelse(DnOP == "<DL", 69, as.numeric(DnOP)),
+DiNP = ifelse(DiNP == "<DL", 102, as.numeric(DiNP))
+) %>% 
+  mutate(Period = as.numeric(as.character(Period))) %>%
+  arrange(House_ID)
+
+
+complete_houses <- phaletes_filled %>%
+  group_by(House_ID) %>%
+  filter(n_distinct(Period) == 5) %>%
+  ungroup()
+```
+
+###DEP
+
+```{r}
+#Line Plot for DEP
+
+phaletes_filled %>%
+  filter(Period %in% c(0, 3, 6, 9, 12)) %>%
+  select(House_ID, Period, DEP) %>%
+  ggplot(aes(x = Period, y = DEP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DEP") +
+  theme_minimal()
+
+
+
+# Line plot for DEP (complete case only)
+complete_houses %>%
+  select(House_ID, Period, DEP) %>%
+  ggplot(aes(x = Period, y = DEP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  # Optionally add points for better visualization
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DEP for complete houses") +
+  theme_minimal()
+```
+
+### DPP
+
+```{r}
+phaletes_filled %>%
+  filter(Period %in% c(0, 3, 6, 9, 12)) %>%
+  select(House_ID, Period, DPP) %>%
+  ggplot(aes(x = Period, y = DPP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DPP") +
+  theme_minimal()
+
+
+
+complete_houses %>%
+  select(House_ID, Period, DPP) %>%
+  ggplot(aes(x = Period, y = DPP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  # Optionally add points for better visualization
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DPP for complete houses") +
+  theme_minimal()
+```
+
+### DiBP
+```{r}
+phaletes_filled %>%
+  filter(Period %in% c(0, 3, 6, 9, 12)) %>%
+  select(House_ID, Period, DiBP) %>%
+  ggplot(aes(x = Period, y = DiBP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DiBP") +
+  theme_minimal()
+
+
+
+complete_houses %>%
+  select(House_ID, Period, DiBP) %>%
+  ggplot(aes(x = Period, y = DiBP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  # Optionally add points for better visualization
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DiBP for complete houses") +
+  theme_minimal()
+```
+
+### DnBP
+```{r}
+phaletes_filled %>%
+  filter(Period %in% c(0, 3, 6, 9, 12)) %>%
+  select(House_ID, Period, DnBP) %>%
+  ggplot(aes(x = Period, y = DnBP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DnBP") +
+  theme_minimal()
+
+
+
+complete_houses %>%
+  select(House_ID, Period, DnBP) %>%
+  ggplot(aes(x = Period, y = DnBP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  # Optionally add points for better visualization
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DnBP for complete houses") +
+  theme_minimal()
+```
+
+### BzBP
+
+```{r}
+phaletes_filled %>%
+  filter(Period %in% c(0, 3, 6, 9, 12)) %>%
+  select(House_ID, Period, BzBP) %>%
+  ggplot(aes(x = Period, y = BzBP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of BzBP") +
+  theme_minimal()
+
+
+
+complete_houses %>%
+  select(House_ID, Period, BzBP) %>%
+  ggplot(aes(x = Period, y = BzBP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() + 
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of BzBP for complete house") +
+  theme_minimal()
+```
+
+### DEHP
+```{r}
+phaletes_filled %>%
+  filter(Period %in% c(0, 3, 6, 9, 12)) %>%
+  select(House_ID, Period, DEHP) %>%
+  ggplot(aes(x = Period, y = DEHP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DEHP") +
+  theme_minimal()
+
+
+
+complete_houses %>%
+  select(House_ID, Period, DEHP) %>%
+  ggplot(aes(x = Period, y = DEHP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() + 
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DEHP for complete house") +
+  theme_minimal()
+```
+### DnOP
+```{r}
+phaletes_filled %>%
+  filter(Period %in% c(0, 3, 6, 9, 12)) %>%
+  select(House_ID, Period, DnOP) %>%
+  ggplot(aes(x = Period, y = DnOP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DnOP") +
+  theme_minimal()
+
+
+
+complete_houses %>%
+  select(House_ID, Period, DnOP) %>%
+  ggplot(aes(x = Period, y = DnOP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() + 
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DnOP for complete house") +
+  theme_minimal()
+```
+
+### DiNP
+
+```{r}
+phaletes_filled %>%
+  filter(Period %in% c(0, 3, 6, 9, 12)) %>%
+  select(House_ID, Period, DiNP) %>%
+  ggplot(aes(x = Period, y = DiNP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() +  
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DiNP") +
+  theme_minimal()
+
+
+
+complete_houses %>%
+  select(House_ID, Period, DiNP) %>%
+  ggplot(aes(x = Period, y = DiNP, group = House_ID, color = House_ID)) +
+  geom_line() +
+  geom_point() + 
+  scale_x_continuous(breaks = c(0, 3, 6, 9, 12)) +
+  ylab("Concentration (pg/m3)") + 
+  xlab("Period (months)") +
+  ggtitle("Concentration of DiNP for complete house") +
+  theme_minimal()
+```
+
+
+

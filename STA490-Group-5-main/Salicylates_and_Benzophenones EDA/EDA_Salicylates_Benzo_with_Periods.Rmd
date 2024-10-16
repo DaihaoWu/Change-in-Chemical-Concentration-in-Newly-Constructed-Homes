@@ -1,0 +1,1631 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r, include = F, echo = F}
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(readxl)
+library(janitor)
+library(ggplot2)
+library(gridExtra)
+library(writexl)
+
+
+survey_data <- read_excel("20231027_0-12 Month Questionnaire Data.xlsx")
+
+# Function to delete last three to fourth character of a date string
+delete_characters <- function(date_string) {
+  substr(date_string, 1, nchar(date_string) - 4) %>% 
+    paste0(substr(date_string, nchar(date_string) - 1, nchar(date_string)))
+}
+
+survey_data$date = sapply(survey_data$date, delete_characters) 
+
+survey_data$date <- as.Date(survey_data$date, "%m/%d/%y")
+
+# Order by House ID and then by Start date
+survey_data <- survey_data %>%
+  arrange(id, date)
+
+```
+
+
+
+```{r, include = F, echo = F}
+### READ IN CONCENTRATION DATA, please look for exclamation mark (!!!), you might need to change code at !!!! section
+
+full_data = read_excel("New Home Study- SVOCs_University of Toronto_March2024.xlsx", sheet = "Passive Air - PDMS (pg.m-3)", skip = 4)
+
+
+
+
+full_data <- full_data[c(1:140), c(1:5, 47:51, 53:55)] #Filter and select to houses with only the Salicylates and Benzophenones.  
+#!!!!!!!!PLEASE change the above slicing of 47:51, 53:55 to your variables of interest!!!!!!!!
+
+
+
+
+# Get the column names of chemical data
+chemical_columns <- colnames(full_data)[sapply(full_data, is.character) & colnames(full_data) != "House ID" & colnames(full_data) != "Sample ID" & colnames(full_data) != "Period (month)" & colnames(full_data) != "Start date \n(yyyy-mm-dd)" & colnames(full_data) != "Stop date (yyyy-mm-dd)"]
+
+# Select columns with "<DL" frequency below 50%
+calculate_dl_frequency <- function(column) {
+  return(sum(column == "<DL") / length(column))
+}
+
+selected_columns <- chemical_columns[sapply(full_data[chemical_columns], calculate_dl_frequency) < 0.5]
+
+# Subset the data to include only selected columns
+selected_data <- full_data[, c("House ID", "Sample ID", "Period (month)","Start date \n(yyyy-mm-dd)", "Stop date (yyyy-mm-dd)", selected_columns)]
+
+selected_data$`Period (month)` <- as.numeric(selected_data$`Period (month)`)
+selected_data$`Period (month)`[is.na(selected_data$`Period (month)`)] <- 999
+selected_data$`Period (month)`[!selected_data$`Period (month)` %in% c(0, 3, 6, 9, 12, 999)] <- 999 #Change Blank or other usual input of period value to 999
+
+selected_data <- selected_data %>%
+  arrange(`House ID`, `Period (month)`)
+
+#Changed the column names for plotting.   !!!!YOU can change it to your chemicals, or just ignore it if you don't want to change it.!!!!!!
+colnames(selected_data)[colnames(selected_data) == "Hexyl salicylate"] <- "Hexyl_salicylate"
+
+colnames(selected_data)[colnames(selected_data) == "Benzyl salicylate"] <- "Benzyl_salicylate"
+
+colnames(selected_data)[colnames(selected_data) == "2-ethylhexyl salicylate"] <- "Ethylhexyl_salicylate"
+
+colnames(selected_data)[colnames(selected_data) == "
+BP"] <- "BPs"
+
+colnames(selected_data)[colnames(selected_data) == "BP-3"] <- "BP_3"
+
+colnames(selected_data)[colnames(selected_data) == "BP-8"] <- "BP_8"
+
+
+
+
+###!!!!!! NEED TO INCLUDE NEXT TWO LINES IN YOUR CODE !!!!!
+colnames(selected_data)[colnames(selected_data) == "House ID"] <- "House_ID"
+colnames(selected_data)[colnames(selected_data) == "Period (month)"] <- "Period"
+
+
+# !!!!!! CHANGE below column names to your chemicals!!!!!
+selected_data$Hexyl_salicylate = as.numeric(selected_data$Hexyl_salicylate)
+selected_data$Benzyl_salicylate = as.numeric(selected_data$Benzyl_salicylate)
+selected_data$Ethylhexyl_salicylate = as.numeric(selected_data$Ethylhexyl_salicylate)
+selected_data$BPs = as.numeric(selected_data$BPs)
+selected_data$BP_3 = as.numeric(selected_data$BP_3)
+selected_data$BP_8 = as.numeric(selected_data$BP_8)
+
+
+```
+
+
+
+
+```{r, include = F, echo = F}
+
+selected_data <- selected_data %>%
+  rename(id = House_ID)
+
+# Change the date for the selected data to date
+selected_data$`Start date 
+(yyyy-mm-dd)` <- as.Date(selected_data$`Start date 
+(yyyy-mm-dd)`, origin = "1900-01-01")
+
+selected_data <- selected_data %>%
+  rename(start_date = `Start date 
+(yyyy-mm-dd)`)
+
+
+# Create a new column 'period' initialized with NA
+survey_data$period <- NA
+
+# Loop through each row of survey_data
+for (i in 1:nrow(survey_data)) {
+  # Extract current row's id and date
+  current_id <- survey_data$id[i]
+  current_date <- survey_data$date[i]
+  
+  # Filter selected_data to find matching rows
+  matching_rows <- selected_data %>%
+    filter(id == current_id & abs(difftime(start_date, current_date, units = "days")) <= 30)
+  
+  # If there are matching rows, take the first period_value
+  if (nrow(matching_rows) > 0) {
+    survey_data$period[i] <- matching_rows$Period[1]
+  }
+}
+```
+
+
+```{r, include = F, echo = F}
+# Merge the dataset using left join
+Survey_Selected_Merged = left_join(selected_data, survey_data, by = c('id', 'Period' = 'period'))
+
+# Merge with tech data to get the full data
+tech_survey_data = read_excel("20231027_Technician Survey Data.xlsx")
+full_data_Matched_Period = left_join(Survey_Selected_Merged, tech_survey_data, by = 'id')
+```
+
+
+```{r, include = F, echo = F}
+# Combine all type of furniture as new furniture as a group
+
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(new_furniture_yn = case_when(n_kmat_new > 0 | n_mat_cover_new > 0 | n_tmat_new > 0 | n_uph_chair_new > 0 | n_uph_sofa_new > 0 | n_uph_ottoman_new > 0 | n_uph_kids_new > 0 | n_uph_other_new > 0 | n_comp_dining_new > 0 | n_comp_bed_new > 0 | n_comp_dresser_new > 0 | n_comp_desk_new > 0 | n_comp_accent_new > 0 | n_comp_other_new > 0 ~ 1, is.na(n_kmat_new) & is.na(n_mat_cover_new) & is.na(n_tmat_new) & is.na(n_uph_chair_new) & is.na(n_uph_sofa_new) & is.na(n_uph_ottoman_new) & is.na(n_uph_kids_new) & is.na(n_uph_other_new) & is.na(n_comp_dining_new) & is.na(n_comp_bed_new) & is.na(n_comp_dresser_new) & is.na(n_comp_desk_new) & is.na(n_comp_accent_new) & is.na(n_comp_other_new) ~ NA, .default = 0))
+
+```
+
+
+
+# Exploratory Data Analysis for Salicylates and BP
+
+The initial chemical concentration dataset has five Salicylates and three different types of BPs. However, for chemicals that have detection frequency above 50%, we are left with three Salicylates and all three BPs.
+
+These are: "Hexyl Salicylate", "Benzyl Salicylate", "2-Ethyhexyl Salicylate", "BP", "BP-3" and "BP-8".
+
+In this phase, we have relatively more data observations to look at.
+There are in total 44 houses in our dataset
+The following are the houses with 0 to 12 months period recorded: 
+
+"NHAQS-028" "NHAQS-029" "NHAQS-030" "NHAQS-031" "NHAQS-032" "NHAQS-034" "NHAQS-036"
+
+There are 8 houses have 1 period recorded.
+
+10 houses have 2 periods recorded.
+
+7 houses have 3 periods recorded.
+
+12 houses have 4 periods recorded.
+
+5 houses have 5 periods (0, 3, 6, 9, 12) recorded.
+
+2 houses have 6 periods (0, 3, 6, 9, 12, other unusual period value e.g. Blank) recorded.
+
+\vspace{5pt}
+
+
+## Potential Impact of Purchase of New Furniture
+\vspace{3pt}
+
+```{r, echo = F, warning = F}
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(new_furniture_adj = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Hexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Hexyl_salicylate, color = as.factor(new_furniture_adj), group = as.factor(id))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("Hexyl_salicylate versus Month by Homes with Purchase of \nNew Furniture")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+```
+
+When we look at the above graph. For Hexyl Salicylate, most of the blue lines (purchased new furniture) have a positive slope, and all red lines (didn't purchase) have a negative slope, implying that the purchase of new furniture might have an influence on the increase in the level of Hexyl Salicylate.
+
+However, for other chemicals, the trend seems to be random, and we could hardly draw any conclusion from it.
+
+
+```{r,include = F, echo = F, warning=F}
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(new_furniture_adj = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BPs != "<DL") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BPs, color = as.factor(new_furniture_adj), group = as.factor(id))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("BPs versus Month by Homes with Purchase of \nNew Furniture")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(new_furniture_adj = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Ethylhexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Ethylhexyl_salicylate, color = as.factor(new_furniture_adj), group = as.factor(id))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("Ethylhexyl_salicylate versus Month by Homes with Purchase of \nNew Furniture")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(new_furniture_adj = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Hexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Hexyl_salicylate, color = as.factor(new_furniture_adj), group = as.factor(id))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("Hexyl_salicylate versus Month by Homes with Purchase of \nNew Furniture")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(new_furniture_adj = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Benzyl_salicylate != "<DL" & id != "NHAQS-038") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Benzyl_salicylate, color = as.factor(new_furniture_adj), group = as.factor(id))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("Benzyl_salicylate versus Month by Homes with Purchase of \nNew Furniture")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  ) +
+  ylim(0,2000)
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(new_furniture_adj = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_3 != "<DL") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_3, color = as.factor(new_furniture_adj), group = as.factor(id))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("BP_3 versus Month by Homes with Purchase of \nNew Furniture")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(new_furniture_adj = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_8 != "<DL" & id != "NHAQS-016") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_8, color = as.factor(new_furniture_adj), group = as.factor(id))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Furniture") +
+  ggtitle("BP_8 versus Month by Homes with Purchase of \nNew Furniture")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+```
+
+
+\vspace{5pt}
+
+
+## Potential Impact of Purchase of New Electronics
+\vspace{3pt}
+
+
+```{r, echo = F, warning = F}
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_new_electronics = n_desktop_new + n_laptop_new + n_3dprinter_new + n_monitor_new + n_printer_new + n_tv_new + n_tablets_new+ n_stereo_new + n_speakers_new)
+
+full_data_Matched_Period$n_new_electronics[is.na(full_data_Matched_Period$n_new_electronics)] <- "NA"
+
+# Define custom colors
+custom_colors <- c("0" = "#FF3333", "1" = "#0000FF", "2" = "#FF9999", "3" = "#FF6666", "4" = "#FF3333", 'NA' = "grey")
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_new_electronics = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Hexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Hexyl_salicylate, color = as.factor(n_new_electronics), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Electronics") +
+  ggtitle("Hexyl_salicylate over Month by Homes with Purchase of \nElectronics")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+```
+
+When we look at the graph for Hexyl Salicylate above, many blue lines (Purchased New Electronics) have positive slope and all red lines (Didn't purchase electronics) have nearly negative slope.
+
+Similarly, if we look at other chemicals, we could not observe any significant trend regarding the purchase of new electronics.
+
+
+```{r,include = F, echo = F, warning=F}
+#Combine all the purchase of electronics
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_new_electronics = n_desktop_new + n_laptop_new + n_3dprinter_new + n_monitor_new + n_printer_new + n_tv_new + n_tablets_new+ n_stereo_new + n_speakers_new)
+
+full_data_Matched_Period$n_new_electronics[is.na(full_data_Matched_Period$n_new_electronics)] <- "NA"
+
+# Define custom colors
+custom_colors <- c("0" = "#FF3333", "1" = "#0000FF", "2" = "#FF9999", "3" = "#FF6666", "4" = "#FF3333", 'NA' = "grey")
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_new_electronics = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BPs != "<DL") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BPs, color = as.factor(n_new_electronics), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Electronics") +
+  ggtitle("BPs over Month by Homes with Purchase of \nElectronics")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_new_electronics = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_3 != "<DL") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_3, color = as.factor(n_new_electronics), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Electronics") +
+  ggtitle("BP_3 over Month by Homes with Purchase of \nElectronics")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_new_electronics = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_8 != "<DL" & id != "NHAQS-016") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_8, color = as.factor(n_new_electronics), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Electronics") +
+  ggtitle("BP_8 over Month by Homes with Purchase of \nElectronics")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_new_electronics = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Ethylhexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Ethylhexyl_salicylate, color = as.factor(n_new_electronics), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Electronics") +
+  ggtitle("Ethylhexyl_salicylate over Month by Homes with Purchase of \nElectronics")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_new_electronics = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Benzyl_salicylate != "<DL" & id != "NHAQS-038") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Benzyl_salicylate, color = as.factor(n_new_electronics), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Electronics") +
+  ggtitle("Benzyl_salicylate over Month by Homes with Purchase of \nElectronics")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )+
+  ylim(0, 2000)
+
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_new_electronics = lead(new_furniture_yn, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Hexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Hexyl_salicylate, color = as.factor(n_new_electronics), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "Purchase of new Electronics") +
+  ggtitle("Hexyl_salicylate over Month by Homes with Purchase of \nElectronics")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+```
+
+
+\vspace{5pt}
+
+
+## Potential Impact of Using Cleaning Products
+\vspace{3pt}
+
+```{r,echo = F, warning=FALSE}
+#comebine number of days cleaning product was used
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_days_cleaningprod = bleaches_n_days + disinfectants_n_days + tubcleaner_n_days + toiletcleaner_n_days + glasscleaner_n_days + drainopener_n_days + mineralremover_n_days+ multicleaner_n_days + metalcleaner_n_days + ovencleaner_n_days + floorcleaner_n_days + floorwax_n_days + carpetcleaner_n_days + uph_cleaner_n_days + dustprod_n_days + furnpol_n_days)
+
+full_data_Matched_Period$n_days_cleaningprod[is.na(full_data_Matched_Period$n_days_cleaningprod)] <- "NA"
+
+# Define custom colors
+custom_colors <- c("0" = "black", "1" = "#FFCCCC", "2" = "#FF9999", "3" = "#FF6666", "4" = "#FF3333", 
+                   "5" = "#FF0000", "6" = "#CC0000", "8" = "#990000", "21" = "#660000", "26" = "#9900FF", 
+                   "35" = "#660099", "42" = "#330066", "NA" = "grey")
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_cleaningprod = lead(n_days_cleaningprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Benzyl_salicylate != "<DL" & id != "NHAQS-038") %>%
+  group_by(id)
+
+adjusted_data$n_days_cleaningprod <- factor(adjusted_data$n_days_cleaningprod, levels = c("0", "1", "2", "3", "4", "5", "6", "8", "21", "26", "35", "42", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Benzyl_salicylate, color = as.factor(n_days_cleaningprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Cleaning Product") +
+  ggtitle("Benzyl_salicylate over Month by Homes Using \nCLeaning Product")+
+  ylim(0, 2000)+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+```
+
+For the usage of cleaning products, all chemicals from Salicylate and BP family appear to have a trend like the above graph, where we could not oberve anything significant, because the slope of the red lines and black lines appear to be random.
+
+Thus, cleaning products might not be a suitable variable to model or draw a conclusion from.
+
+
+```{r,include = F, echo = F, warning=F}
+#comebine number of days cleaning product was used
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_days_cleaningprod = bleaches_n_days + disinfectants_n_days + tubcleaner_n_days + toiletcleaner_n_days + glasscleaner_n_days + drainopener_n_days + mineralremover_n_days+ multicleaner_n_days + metalcleaner_n_days + ovencleaner_n_days + floorcleaner_n_days + floorwax_n_days + carpetcleaner_n_days + uph_cleaner_n_days + dustprod_n_days + furnpol_n_days)
+
+full_data_Matched_Period$n_days_cleaningprod[is.na(full_data_Matched_Period$n_days_cleaningprod)] <- "NA"
+
+# Define custom colors
+custom_colors <- c("0" = "black", "1" = "#FFCCCC", "2" = "#FF9999", "3" = "#FF6666", "4" = "#FF3333", 
+                   "5" = "#FF0000", "6" = "#CC0000", "8" = "#990000", "21" = "#660000", "26" = "#9900FF", 
+                   "35" = "#660099", "42" = "#330066", "NA" = "grey")
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_cleaningprod = lead(n_days_cleaningprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BPs != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_cleaningprod <- factor(adjusted_data$n_days_cleaningprod, levels = c("0", "1", "2", "3", "4", "5", "6", "8", "21", "26", "35", "42", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BPs, color = as.factor(n_days_cleaningprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Cleaning Product") +
+  ggtitle("BPs over Month by Homes Using \nCLeaning Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_cleaningprod = lead(n_days_cleaningprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_3 != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_cleaningprod <- factor(adjusted_data$n_days_cleaningprod, levels = c("0", "1", "2", "3", "4", "5", "6", "8", "21", "26", "35", "42", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_3, color = as.factor(n_days_cleaningprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Cleaning Product") +
+  ggtitle("BP_3 over Month by Homes Using \nCLeaning Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_cleaningprod = lead(n_days_cleaningprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_8 != "<DL" & id != "NHAQS-016") %>%
+  group_by(id)
+
+adjusted_data$n_days_cleaningprod <- factor(adjusted_data$n_days_cleaningprod, levels = c("0", "1", "2", "3", "4", "5", "6", "8", "21", "26", "35", "42", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_8, color = as.factor(n_days_cleaningprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Cleaning Product") +
+  ggtitle("BP_8 over Month by Homes Using \nCLeaning Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_cleaningprod = lead(n_days_cleaningprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Ethylhexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_cleaningprod <- factor(adjusted_data$n_days_cleaningprod, levels = c("0", "1", "2", "3", "4", "5", "6", "8", "21", "26", "35", "42", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Ethylhexyl_salicylate, color = as.factor(n_days_cleaningprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Cleaning Product") +
+  ggtitle("Ethylhexyl_salicylate over Month by Homes Using \nCLeaning Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_cleaningprod = lead(n_days_cleaningprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Hexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_cleaningprod <- factor(adjusted_data$n_days_cleaningprod, levels = c("0", "1", "2", "3", "4", "5", "6", "8", "21", "26", "35", "42", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Hexyl_salicylate, color = as.factor(n_days_cleaningprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Cleaning Product") +
+  ggtitle("Hexyl_salicylate over Month by Homes Using \nCLeaning Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_cleaningprod = lead(n_days_cleaningprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Benzyl_salicylate != "<DL" & id != "NHAQS-038") %>%
+  group_by(id)
+
+adjusted_data$n_days_cleaningprod <- factor(adjusted_data$n_days_cleaningprod, levels = c("0", "1", "2", "3", "4", "5", "6", "8", "21", "26", "35", "42", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Benzyl_salicylate, color = as.factor(n_days_cleaningprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Cleaning Product") +
+  ggtitle("Benzyl_salicylate over Month by Homes Using \nCLeaning Product")+
+  ylim(0, 2000)+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+```
+
+
+
+\vspace{5pt}
+
+
+## Potential Impact of Using Personal Care Products
+\vspace{3pt}
+
+
+```{r, echo = F, warning= FALSE}
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_days_personalcareprod = nailpolish_n_days + perfume_n_days + hspray_n_days)
+
+full_data_Matched_Period$n_days_personalcareprod[is.na(full_data_Matched_Period$n_days_personalcareprod)] <- "NA"
+
+custom_colors <- c("0" = "black", "1" = "#FFCCCC", "2" = "#FF9999", "3" = "#FF6666", "4" = "#FF3333", 
+                   "5" = "#FF0000", '8' = '#9900FF', "27" = "#660099","NA" = "grey")
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_personalcareprod = lead(n_days_personalcareprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BPs != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_personalcareprod <- factor(adjusted_data$n_days_personalcareprod, levels = c("0", "1", "2", "3", "4", "5", '8', "27", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BPs, color = as.factor(n_days_personalcareprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Personal Care Product") +
+  ggtitle("BPs over Month by Homes Using \nPersonal Care Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+```
+Looking at the above graph, most of the red/purple lines (used personal care products) have a positive slope, and most of the black lines (didn't use any) have a negative slope, so it is possible that personal care products could bring a impact on the BPs concentration.
+
+
+```{r, include = F, echo = F, warning=F}
+#Number of Days where a personal care product was used for all types of personal care products
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_days_personalcareprod = nailpolish_n_days + perfume_n_days + hspray_n_days)
+
+full_data_Matched_Period$n_days_personalcareprod[is.na(full_data_Matched_Period$n_days_personalcareprod)] <- "NA"
+
+custom_colors <- c("0" = "black", "1" = "#FFCCCC", "2" = "#FF9999", "3" = "#FF6666", "4" = "#FF3333", 
+                   "5" = "#FF0000", '8' = '#9900FF', "27" = "#660099","NA" = "grey")
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_personalcareprod = lead(n_days_personalcareprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BPs != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_personalcareprod <- factor(adjusted_data$n_days_personalcareprod, levels = c("0", "1", "2", "3", "4", "5", '8', "27", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BPs, color = as.factor(n_days_personalcareprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Personal Care Product") +
+  ggtitle("BPs over Month by Homes Using \nPersonal Care Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_personalcareprod = lead(n_days_personalcareprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_3 != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_personalcareprod <- factor(adjusted_data$n_days_personalcareprod, levels = c("0", "1", "2", "3", "4", "5", '8', "27", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_3, color = as.factor(n_days_personalcareprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Personal Care Product") +
+  ggtitle("BP_3 over Month by Homes Using \nPersonal Care Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_personalcareprod = lead(n_days_personalcareprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_8 != "<DL" & id != "NHAQS-016") %>%
+  group_by(id)
+
+adjusted_data$n_days_personalcareprod <- factor(adjusted_data$n_days_personalcareprod, levels = c("0", "1", "2", "3", "4", "5", '8', "27", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_8, color = as.factor(n_days_personalcareprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Personal Care Product") +
+  ggtitle("BP_8 over Month by Homes Using \nPersonal Care Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_personalcareprod = lead(n_days_personalcareprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Benzyl_salicylate != "<DL" & id != "NHAQS-038") %>%
+  group_by(id)
+
+adjusted_data$n_days_personalcareprod <- factor(adjusted_data$n_days_personalcareprod, levels = c("0", "1", "2", "3", "4", "5", '8', "27", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Benzyl_salicylate, color = as.factor(n_days_personalcareprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Personal Care Product") +
+  ggtitle("Benzyl_salicylate over Month by Homes Using \nPersonal Care Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  ) +
+  ylim(0, 2000)
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_personalcareprod = lead(n_days_personalcareprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Ethylhexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_personalcareprod <- factor(adjusted_data$n_days_personalcareprod, levels = c("0", "1", "2", "3", "4", "5", '8', "27", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Ethylhexyl_salicylate, color = as.factor(n_days_personalcareprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Personal Care Product") +
+  ggtitle("Ethylhexyl_salicylate over Month by Homes Using \nPersonal Care Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_personalcareprod = lead(n_days_personalcareprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Hexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_personalcareprod <- factor(adjusted_data$n_days_personalcareprod, levels = c("0", "1", "2", "3", "4", "5", '8', "27", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Hexyl_salicylate, color = as.factor(n_days_personalcareprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Personal Care Product") +
+  ggtitle("Hexyl Salicylate over Month by Homes Using \nPersonal Care Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+
+```
+ 
+ 
+ 
+ \vspace{5pt}
+
+
+## Potential Impact of Using Refreshener Products (Candles, Oil Diffuser, Air/Spray Refreshener)
+\vspace{3pt}
+ 
+```{r,echo = F, warning=FALSE}
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_days_freshener = candles_n_days + oildiff_n_days + airfresh_n_days + sprayfreshener_n_days)
+
+full_data_Matched_Period$n_days_freshener[is.na(full_data_Matched_Period$n_days_freshener)] <- "NA"
+
+custom_colors <- c("0" = "black", "0.5" = "#FFCCCC", "1" = "#FF9999", "2" = "#FF6666", "4" = "#FF3333", 
+                   "5" = "#FF0000", '10' = '#9900FF',"NA" = "grey")
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_freshener = lead(n_days_freshener, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Benzyl_salicylate != "<DL" & id != "NHAQS-038") %>%
+  group_by(id)
+
+adjusted_data$n_days_freshener <- factor(adjusted_data$n_days_freshener, levels = c("0",'0.5', "1", "2", "4", "5", '10', "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Benzyl_salicylate, color = as.factor(n_days_freshener), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Refreshener Product") +
+  ggtitle("Benzyl_salicylate over Months by Homes Using \nRefreshener Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )+
+  ylim(0, 2000)
+```
+All of the chemicals appear to have no significant trend like the above graph for Benzyl Salicylate, so refreshener products might not be suitable for modelling.
+
+ 
+```{r,include = F, echo = F, warning=F}
+# Combine the number of days candle/refreshener/diffuser was used
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_days_freshener = candles_n_days + oildiff_n_days + airfresh_n_days + sprayfreshener_n_days)
+
+full_data_Matched_Period$n_days_freshener[is.na(full_data_Matched_Period$n_days_freshener)] <- "NA"
+
+custom_colors <- c("0" = "black", "0.5" = "#FFCCCC", "1" = "#FF9999", "2" = "#FF6666", "4" = "#FF3333", 
+                   "5" = "#FF0000", '10' = '#9900FF',"NA" = "grey")
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_freshener = lead(n_days_freshener, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BPs != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_freshener <- factor(adjusted_data$n_days_freshener, levels = c("0",'0.5', "1", "2", "4", "5", '10', "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BPs, color = as.factor(n_days_freshener), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Refreshener Product") +
+  ggtitle("BPs over Months by Homes Using \nRefreshener Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_freshener = lead(n_days_freshener, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_3 != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_freshener <- factor(adjusted_data$n_days_freshener, levels = c("0",'0.5', "1", "2", "4", "5", '10', "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_3, color = as.factor(n_days_freshener), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Refreshener Product") +
+  ggtitle("BP_3 over Months by Homes Using \nRefreshener Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_freshener = lead(n_days_freshener, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_8 != "<DL" & id != "NHAQS-016") %>%
+  group_by(id)
+
+adjusted_data$n_days_freshener <- factor(adjusted_data$n_days_freshener, levels = c("0",'0.5', "1", "2", "4", "5", '10', "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_8, color = as.factor(n_days_freshener), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Refreshener Product") +
+  ggtitle("BP_8 over Months by Homes Using \nRefreshener Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_freshener = lead(n_days_freshener, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Ethylhexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_freshener <- factor(adjusted_data$n_days_freshener, levels = c("0",'0.5', "1", "2", "4", "5", '10', "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Ethylhexyl_salicylate, color = as.factor(n_days_freshener), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Refreshener Product") +
+  ggtitle("Ethylhexyl_salicylate over Months by Homes Using \nRefreshener Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_freshener = lead(n_days_freshener, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Benzyl_salicylate != "<DL" & id != "NHAQS-038") %>%
+  group_by(id)
+
+adjusted_data$n_days_freshener <- factor(adjusted_data$n_days_freshener, levels = c("0",'0.5', "1", "2", "4", "5", '10', "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Benzyl_salicylate, color = as.factor(n_days_freshener), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Refreshener Product") +
+  ggtitle("Benzyl_salicylate over Months by Homes Using \nRefreshener Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )+
+  ylim(0, 2000)
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_freshener = lead(n_days_freshener, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Hexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_freshener <- factor(adjusted_data$n_days_freshener, levels = c("0",'0.5', "1", "2", "4", "5", '10', "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Hexyl_salicylate, color = as.factor(n_days_freshener), group = as.factor(id))) +
+  geom_line() +  # Increase the line thickness
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Refreshener Product") +
+  ggtitle("Hexyl Salicylate over Months by Homes Using \nRefreshener Product") +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+```
+ 
+ 
+ \vspace{5pt}
+
+
+## Potential Impact of Using Painting Related Products (Paint/Grease/Glue/Varnish)
+\vspace{3pt}
+
+```{r, echo=FALSE, warning=FALSE}
+#Combine the number of days the paint or related product used
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_days_paintprod = paints_n_days + varnish_n_days + grease_n_days + glue_n_days)
+
+full_data_Matched_Period$n_days_paintprod[is.na(full_data_Matched_Period$n_days_paintprod)] <- "NA"
+
+custom_colors <- c("0" = "black", "1" = "#FF9999", "2" = "#FF6666", "3" = "#FF3333", 
+                   "NA" = "grey")
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_paintprod = lead(n_days_paintprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_3 != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_paintprod <- factor(adjusted_data$n_days_paintprod, levels = c("0", "1", "2", "3", "NA"))
+
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_3, color = as.factor(n_days_paintprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using \nPaint Product") +
+  ggtitle("BP_3 over Month by Homes Using Paint Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_paintprod = lead(n_days_paintprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Hexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_paintprod <- factor(adjusted_data$n_days_paintprod, levels = c("0", "1", "2", "3", "NA"))
+
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Hexyl_salicylate, color = as.factor(n_days_paintprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Paint Product") +
+  ggtitle("Hexyl_salicylate over Month by Homes Using \nPaint Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+```
+
+
+For BP3, all of red lines have a positive slope, and the black lines seem to be quite random. Also for Hexyl Salicylate, most black lines have a negative slope, and all red lines have a positive slope. Both these two graphs suggested that the usage of painting related products would have an impact on the concentration level of both the Salicylate and BP. Thus, it is definitely worth looking at the painting products.
+
+ 
+ 
+```{r,include=FALSE, echo = F, warning=F}
+#Combine the number of days the paint or related product used
+full_data_Matched_Period = full_data_Matched_Period %>% mutate(n_days_paintprod = paints_n_days + varnish_n_days + grease_n_days + glue_n_days)
+
+full_data_Matched_Period$n_days_paintprod[is.na(full_data_Matched_Period$n_days_paintprod)] <- "NA"
+
+custom_colors <- c("0" = "black", "1" = "#FF9999", "2" = "#FF6666", "3" = "#FF3333", 
+                   "NA" = "grey")
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_paintprod = lead(n_days_paintprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BPs != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_paintprod <- factor(adjusted_data$n_days_paintprod, levels = c("0", "1", "2", "3", "NA"))
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BPs, color = as.factor(n_days_paintprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using \nPaint Product") +
+  ggtitle("BPs over Month by Homes Using Paint Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_paintprod = lead(n_days_paintprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_3 != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_paintprod <- factor(adjusted_data$n_days_paintprod, levels = c("0", "1", "2", "3", "NA"))
+
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_3, color = as.factor(n_days_paintprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using \nPaint Product") +
+  ggtitle("BP_3 over Month by Homes Using Paint Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_paintprod = lead(n_days_paintprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & BP_8 != "<DL" & id != "NHAQS-016") %>%
+  group_by(id)
+
+adjusted_data$n_days_paintprod <- factor(adjusted_data$n_days_paintprod, levels = c("0", "1", "2", "3", "NA"))
+
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = BP_8, color = as.factor(n_days_paintprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using \nPaint Product") +
+  ggtitle("BP_8 over Month by Homes Using Paint Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_paintprod = lead(n_days_paintprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Benzyl_salicylate != "<DL" & id != "NHAQS-038") %>%
+  group_by(id)
+
+adjusted_data$n_days_paintprod <- factor(adjusted_data$n_days_paintprod, levels = c("0", "1", "2", "3", "NA"))
+
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Benzyl_salicylate, color = as.factor(n_days_paintprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Paint Product") +
+  ggtitle("Benzyl_salicylate over Month by Homes Using \nPaint Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )+
+  ylim(0, 2000)
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_paintprod = lead(n_days_paintprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Hexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_paintprod <- factor(adjusted_data$n_days_paintprod, levels = c("0", "1", "2", "3", "NA"))
+
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Hexyl_salicylate, color = as.factor(n_days_paintprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Paint Product") +
+  ggtitle("Hexyl_salicylate over Month by Homes Using \nPaint Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+
+
+
+adjusted_data <- full_data_Matched_Period %>%
+  mutate(n_days_paintprod = lead(n_days_paintprod, n = 1, default = NA)) %>%
+  filter(Period %in% c(0, 3, 6, 9, 12) & Ethylhexyl_salicylate != "<DL") %>%
+  group_by(id)
+
+adjusted_data$n_days_paintprod <- factor(adjusted_data$n_days_paintprod, levels = c("0", "1", "2", "3", "NA"))
+
+
+# Create the plot with the adjusted data
+ggplot(adjusted_data, aes(x = Period, y = Ethylhexyl_salicylate, color = as.factor(n_days_paintprod), group = as.factor(id))) +
+  geom_line() +
+  scale_color_manual(values = custom_colors) +
+  labs(x = "Month", y = "Concentration", color = "# of Days Using Paint Product") +
+  ggtitle("Ethylhexyl_salicylate over Month by Homes Using \nPaint Product")+
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),  # Increase and center the title
+    legend.position = "bottom",  # Move the legend to the bottom
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+    axis.title = element_text(size = 14),  # Increase axis titles size
+    axis.text = element_text(size = 12)    # Increase axis text size
+  )
+```
+
+ 
+ 
+## Average Concentration level for Homes with Different Insulation Material
+ 
+ 
+```{r, echo = F, warning = F}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+# Sample data (replace this with your actual dataframe)
+full_data_tech <- full_data_Matched_Period %>% filter(Period != 999)
+
+# Aggregate the data
+aggregated_df <- full_data_tech %>%
+  group_by(Period, fiberglass_ins_yn) %>%
+  summarise(
+    Ethylhexyl_salicylate = mean(Ethylhexyl_salicylate, na.rm = TRUE),
+    Hexyl_salicylate = mean(Hexyl_salicylate, na.rm = TRUE),
+    Benzyl_salicylate = mean(Benzyl_salicylate, na.rm = TRUE),
+    BPs = mean(BPs, na.rm = TRUE),
+    BP_3 = mean(BP_3, na.rm = TRUE),
+    BP_8 = mean(BP_8, na.rm = TRUE)
+  )
+
+# Create individual plots
+plot_ES <- ggplot(aggregated_df, aes(x = Period, y = Ethylhexyl_salicylate, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average Ethylhexyl_salicylate versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+plot_HS <- ggplot(aggregated_df, aes(x = Period, y = Hexyl_salicylate, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average Hexyl_salicylate versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+plot_BS <- ggplot(aggregated_df, aes(x = Period, y = Benzyl_salicylate, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average Benzyl_salicylate versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+plot_BPs <- ggplot(aggregated_df, aes(x = Period, y = BPs, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average BPs versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+plot_BP_3 <- ggplot(aggregated_df, aes(x = Period, y = BP_3, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average BP_3 versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+plot_BP_8 <- ggplot(aggregated_df, aes(x = Period, y = BP_8, group = as.factor(fiberglass_ins_yn), color = as.factor(fiberglass_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Fiberglass') +
+  ggtitle("Average BP_8 versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+# Arrange the plots in a 2x4 grid
+grid.arrange(plot_ES, plot_HS, plot_BS, plot_BPs, plot_BP_3, plot_BP_8, ncol = 2)
+```
+
+
+```{r, echo = F, warning=F}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+# Sample data (replace this with your actual dataframe)
+full_data_tech <- full_data_Matched_Period %>% filter(Period != 999)
+
+# Aggregate the data
+aggregated_df <- full_data_tech %>%
+  group_by(Period, sprayfoam_ins_yn) %>%
+  summarise(
+    Ethylhexyl_salicylate = mean(Ethylhexyl_salicylate, na.rm = TRUE),
+    Hexyl_salicylate = mean(Hexyl_salicylate, na.rm = TRUE),
+    Benzyl_salicylate = mean(Benzyl_salicylate, na.rm = TRUE),
+    BPs = mean(BPs, na.rm = TRUE),
+    BP_3 = mean(BP_3, na.rm = TRUE),
+    BP_8 = mean(BP_8, na.rm = TRUE)
+  )
+
+# Create individual plots
+plot_ES <- ggplot(aggregated_df, aes(x = Period, y = Ethylhexyl_salicylate, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average Ethylhexyl_salicylate versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+plot_HS <- ggplot(aggregated_df, aes(x = Period, y = Hexyl_salicylate, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average Hexyl_salicylate versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+plot_BS <- ggplot(aggregated_df, aes(x = Period, y = Benzyl_salicylate, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average Benzyl_salicylate versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+plot_BPs <- ggplot(aggregated_df, aes(x = Period, y = BPs, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average BPs versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+plot_BP_3 <- ggplot(aggregated_df, aes(x = Period, y = BP_3, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average BP_3 versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+plot_BP_8 <- ggplot(aggregated_df, aes(x = Period, y = BP_8, group = as.factor(sprayfoam_ins_yn), color = as.factor(sprayfoam_ins_yn))) +
+  geom_line() +
+  labs(x = "Month", y = "Concentration", color = 'Sprayfoam') +
+  ggtitle("Average BP_8 versus Month") +
+  theme(plot.title = element_text(size = 10))
+
+# Arrange the plots in a 2x4 grid
+grid.arrange(plot_ES, plot_HS, plot_BS, plot_BPs, plot_BP_3, plot_BP_8, ncol = 2)
+``` 
+ 
+No obvious trend or trait can be drawn from the above graphs.
+
+\vspace{7pt}
+
+## Cross-Correlation Analysis
+
+
+```{r,echo = F, warning=FALSE}
+
+selected_data$BPs[is.na(selected_data$BPs)] <- 6.1/2
+selected_data$BP_3[is.na(selected_data$BP_3)] <- 25/2
+selected_data$BP_8[is.na(selected_data$BP_8)] <- 6.3/2
+selected_data$Benzyl_salicylate[is.na(selected_data$Benzyl_salicylate)] <- 17/2
+selected_data$Ethylhexyl_salicylate[is.na(selected_data$Ethylhexyl_salicylate)] <- 35/2
+selected_data$Hexyl_salicylate[is.na(selected_data$Hexyl_salicylate)] <- 34/2
+
+ccf2 <- function(house) {
+  house <- house[order(house$Period), ]
+  
+  Benzyl_salicylate = as.numeric(house$Benzyl_salicylate)
+  Ethylhexyl_salicylate = as.numeric(house$Ethylhexyl_salicylate)
+  Hexyl_salicylate = as.numeric(house$Hexyl_salicylate)
+  BPs = as.numeric(house$BPs)
+  BP_3 = as.numeric(house$BP_3)
+  BP_8 = as.numeric(house$BP_8)
+  
+  ccf(Benzyl_salicylate, Ethylhexyl_salicylate, type= "correlation")
+  ccf(Benzyl_salicylate, Hexyl_salicylate)
+  ccf(Benzyl_salicylate, BPs)
+  ccf(Benzyl_salicylate, BP_3)
+  ccf(Benzyl_salicylate, BP_8)
+  
+  ccf(Ethylhexyl_salicylate, Hexyl_salicylate)
+  ccf(Ethylhexyl_salicylate, BPs)
+  ccf(Ethylhexyl_salicylate, BP_3)
+  ccf(Ethylhexyl_salicylate, BP_8)
+  
+  ccf(Hexyl_salicylate, BPs)
+  ccf(Hexyl_salicylate, BP_3)
+  ccf(Hexyl_salicylate, BP_8)
+
+  ccf(BPs, BP_3)
+  ccf(BPs, BP_8)
+  
+  ccf(BP_3, BP_8)
+}
+
+house32 = selected_data %>% filter(id == "NHAQS-032" & Period %in% c(0, 3, 6, 9, 12))
+
+par(mfrow = c(2,3))
+ccf2(house32)
+
+```
+House 32:
+BS & BPs at lag 0
+BS & BP3 at lag -1
+ES & HS at lag 0
+ES & BP3 at lag -1
+HS & BPs lag 1
+BPs & BP3 lag -1
+HS & BP3 lag 0
+
+Looking at the above graphs, this suggests that for house32, many chemicals have similar trend almost at the same time or at a slightly different time, and it is also the case for some other houses with complete data as well.
+
+## Conclusion:
+Painting products, Personal Care Products, Furnitures and Electronics seem to have an impact on the changes in the chemical concentrations for Salicylates and BPs. However, it is not the case for all the chemicals, but it is still worth diving deeper into these variables.
+
